@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Fundo circular -->
+  <circle cx="100" cy="100" r="95" fill="#1E88E5" />
+  <circle cx="100" cy="100" r="85" fill="white" />
+  
+  <!-- Edifício (condomínio) -->
+  <path d="M80 60 L80 150 L120 150 L120 60 Z" fill="#1E88E5" />
+  
+  <!-- Janelas do edifício -->
+  <rect x="90" y="75" width="20" height="15" rx="2" fill="white" />
+  <rect x="90" y="100" width="20" height="15" rx="2" fill="white" />
+  <rect x="90" y="125" width="20" height="15" rx="2" fill="white" />
+  
+  <!-- Porta -->
+  <rect x="95" y="150" width="10" height="15" fill="#1E88E5" />
+  
+  <!-- QR Code (representação simplificada) -->
+  <rect x="130" y="90" width="25" height="25" rx="2" fill="#1E88E5" />
+  <rect x="135" y="95" width="5" height="5" fill="white" />
+  <rect x="145" y="95" width="5" height="5" fill="white" />
+  <rect x="135" y="105" width="5" height="5" fill="white" />
+  <rect x="145" y="105" width="5" height="5" fill="white" />
+  
+  <!-- Carro -->
+  <path d="M45 115 L55 105 L65 105 L75 115 L75 125 L45 125 Z" fill="#1E88E5" />
+  <circle cx="52" cy="125" r="5" fill="#888" />
+  <circle cx="68" cy="125" r="5" fill="#888" />
+  <rect x="48" y="112" width="24" height="5" fill="white" />
+</svg>
