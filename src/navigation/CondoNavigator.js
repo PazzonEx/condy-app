@@ -15,6 +15,7 @@ import CondoAccessDetailsScreen from '../screens/condo/CondoAccessDetailsScreen'
 import CondoSubscriptionScreen from '../screens/condo/CondoSubscriptionScreen';
 import CondoDashboardScreen from '../screens/condo/CondoDashboardScreen';
 import CondoReportScreen from '../screens/condo/CondoReportScreen';
+import CondoProfileScreen from '../screens/condo/CondoProfileScreen';
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
@@ -22,6 +23,7 @@ const HomeStack = createStackNavigator();
 const RequestsStack = createStackNavigator();
 const ResidentsStack = createStackNavigator();
 const SettingsStack = createStackNavigator();
+
 
 // Stack para a aba Home
 const HomeStackNavigator = () => {
@@ -149,6 +151,11 @@ const SettingsStackNavigator = () => {
         component={CondoSubscriptionScreen} 
         options={{ title: 'Planos e Assinaturas' }}
       />
+      <SettingsStack.Screen 
+      name="CondoProfile" 
+      component={CondoProfileScreen} 
+      options={{ title: 'Perfil do Condomínio' }}
+    />
     </SettingsStack.Navigator>
   );
 };

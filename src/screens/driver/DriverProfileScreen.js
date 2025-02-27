@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Image } from 'react-native';
-import { Text, Card, Divider, useTheme, ActivityIndicator } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Alert, Image, TouchableOpacity } from 'react-native';
+import { Text, Card, Divider, useTheme, ActivityIndicator, Badge, Button as PaperButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
@@ -12,6 +13,7 @@ import Input from '../../components/Input';
 
 // Serviços
 import FirestoreService from '../../services/firestore.service';
+import StorageService from '../../services/storage.service';
 
 const DriverProfileScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -20,12 +22,29 @@ const DriverProfileScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [driverData, setDriverData] = useState(null);
   const [editMode, setEditMode] = useState(false);
+  const [photoURL, setPhotoURL] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState('pending');
   
   // Campos de edição
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [vehicleYear, setVehicleYear] = useState('');
+  const [serviceType, setServiceType] = useState('');
+  
+  // Disponibilidade
+  const [isAvailable, setIsAvailable] = useState(true);
+  
+  // Estatísticas
+  const [stats, setStats] = useState({
+    totalTrips: 0,
+    pendingRequests: 0,
+    completedTrips: 0,
+    rating: 0
+  });
   
   // Carregar dados do motorista
   useEffect(() => {
@@ -39,21 +58,56 @@ const DriverProfileScreen = ({ navigation }) => {
         const driverDoc = await FirestoreService.getDocument('drivers', userProfile.uid);
         
         if (driverDoc) {
-          // Se o documento existe, use os dados
           setDriverData(driverDoc);
+          setPhotoURL(driverDoc.photoURL);
+          setVerificationStatus(driverDoc.verificationStatus || 'pending');
           
           // Preencher campos de edição
           setName(driverDoc.name || userProfile.displayName || '');
           setPhone(driverDoc.phone || '');
           setVehicleModel(driverDoc.vehicleModel || '');
           setVehiclePlate(driverDoc.vehiclePlate || '');
+          setVehicleColor(driverDoc.vehicleColor || '');
+          setVehicleYear(driverDoc.vehicleYear || '');
+          setServiceType(driverDoc.serviceType || '');
+          setIsAvailable(driverDoc.isAvailable !== false);
+          
+          // Carregar estatísticas
+          try {
+            // Estatísticas básicas - em um app real, teríamos um serviço dedicado
+            const accessRequests = await FirestoreService.queryDocuments(
+              'access_requests',
+              [{ field: 'driverId', operator: '==', value: userProfile.uid }]
+            );
+            
+            if (accessRequests.length > 0) {
+              const completedTrips = accessRequests.filter(
+                r => r.status === 'completed' || r.status === 'entered'
+              ).length;
+              
+              const pendingRequests = accessRequests.filter(
+                r => r.status === 'pending' || r.status === 'authorized'
+              ).length;
+              
+              setStats({
+                totalTrips: accessRequests.length,
+                pendingRequests,
+                completedTrips,
+                rating: driverDoc.rating || 4.8 // Valor de exemplo, ou poderíamos calcular com base nos acessos
+              });
+            }
+          } catch (statsError) {
+            console.error('Erro ao carregar estatísticas:', statsError);
+          }
         } else {
           // Se o documento não existe, crie com dados iniciais
           const initialData = {
             name: userProfile.displayName || '',
             email: userProfile.email || '',
             status: 'active',
-            type: 'driver'
+            type: 'driver',
+            verificationStatus: 'pending',
+            isAvailable: true
           };
           
           // Criar documento no Firestore
@@ -62,14 +116,11 @@ const DriverProfileScreen = ({ navigation }) => {
           // Atualizar estado local
           setDriverData(initialData);
           setName(initialData.name);
+          setVerificationStatus('pending');
         }
       } catch (error) {
         console.error('Erro ao carregar dados do motorista:', error);
-        // Em caso de erro, pelo menos defina valores padrão
-        setName(userProfile.displayName || '');
-        setPhone('');
-        setVehicleModel('');
-        setVehiclePlate('');
+        Alert.alert('Erro', 'Não foi possível carregar seus dados. Tente novamente mais tarde.');
       } finally {
         setLoading(false);
       }
@@ -78,17 +129,133 @@ const DriverProfileScreen = ({ navigation }) => {
     loadDriverData();
   }, [userProfile]);
   
+  // Alternar disponibilidade
+  const toggleAvailability = async () => {
+    try {
+      const newAvailability = !isAvailable;
+      
+      // Atualizar no Firestore
+      await FirestoreService.updateDocument('drivers', userProfile.uid, {
+        isAvailable: newAvailability
+      });
+      
+      // Atualizar estado local
+      setIsAvailable(newAvailability);
+      setDriverData(prev => ({ ...prev, isAvailable: newAvailability }));
+      
+      Alert.alert(
+        'Status Atualizado', 
+        `Você está ${newAvailability ? 'disponível' : 'indisponível'} para novas solicitações.`
+      );
+    } catch (error) {
+      console.error('Erro ao atualizar disponibilidade:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar seu status. Tente novamente.');
+    }
+  };
+
+  // Escolher foto de perfil
+  const handleChoosePhoto = async () => {
+    try {
+      // Solicitar permissão para acessar a biblioteca de mídia
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'É necessário conceder permissão para acessar a galeria.');
+        return;
+      }
+      
+      // Abrir seletor de imagem
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setUploadingPhoto(true);
+        
+        // Fazer upload da imagem
+        const uri = result.assets[0].uri;
+        const filename = uri.split('/').pop();
+        const path = `profile_photos/${userProfile.uid}/${filename}`;
+        
+        const uploadResult = await StorageService.uploadFile(path, uri);
+        
+        // Atualizar URL da foto
+        setPhotoURL(uploadResult.url);
+        
+        // Atualizar documento no Firestore
+        await FirestoreService.updateDocument('drivers', userProfile.uid, {
+          photoURL: uploadResult.url
+        });
+        
+        setUploadingPhoto(false);
+        Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
+      }
+    } catch (error) {
+      console.error('Erro ao escolher foto:', error);
+      setUploadingPhoto(false);
+      Alert.alert('Erro', 'Não foi possível atualizar a foto de perfil. Tente novamente.');
+    }
+  };
+
+  // Formatar placa do veículo
+  const handleVehiclePlateChange = (text) => {
+    // Remover caracteres não alfanuméricos
+    const cleanedText = text.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    
+    // Limitar a 7 caracteres
+    const limitedText = cleanedText.substring(0, 7);
+    
+    // Formatar com hífen após os 3 primeiros caracteres
+    let formattedText = limitedText;
+    if (limitedText.length > 3) {
+      formattedText = `${limitedText.substring(0, 3)}-${limitedText.substring(3)}`;
+    }
+    
+    setVehiclePlate(formattedText);
+  };
+
   // Salvar alterações no perfil
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
+      
+      // Validar dados
+      if (!name.trim()) {
+        Alert.alert('Erro', 'O nome é obrigatório');
+        setLoading(false);
+        return;
+      }
+      
+      if (!vehiclePlate.trim()) {
+        Alert.alert('Erro', 'A placa do veículo é obrigatória');
+        setLoading(false);
+        return;
+      }
+      
+      if (!vehicleModel.trim()) {
+        Alert.alert('Erro', 'O modelo do veículo é obrigatório');
+        setLoading(false);
+        return;
+      }
+      
+      if (!phone.trim()) {
+        Alert.alert('Erro', 'O telefone é obrigatório');
+        setLoading(false);
+        return;
+      }
       
       // Dados a serem atualizados
       const updatedData = {
         name,
         phone,
         vehicleModel,
-        vehiclePlate: vehiclePlate.toUpperCase()
+        vehiclePlate: vehiclePlate.toUpperCase(),
+        vehicleColor,
+        vehicleYear,
+        serviceType
       };
       
       // Atualizar dados no Firestore
@@ -113,7 +280,7 @@ const DriverProfileScreen = ({ navigation }) => {
       setLoading(false);
     }
   };
-  
+
   // Cancelar edição
   const handleCancelEdit = () => {
     // Restaurar valores originais
@@ -121,11 +288,30 @@ const DriverProfileScreen = ({ navigation }) => {
     setPhone(driverData?.phone || '');
     setVehicleModel(driverData?.vehicleModel || '');
     setVehiclePlate(driverData?.vehiclePlate || '');
+    setVehicleColor(driverData?.vehicleColor || '');
+    setVehicleYear(driverData?.vehicleYear || '');
+    setServiceType(driverData?.serviceType || '');
     
     // Sair do modo de edição
     setEditMode(false);
   };
-  
+
+  // Formatar exibição do tipo de serviço
+  const getServiceTypeLabel = (type) => {
+    switch (type) {
+      case 'app':
+        return 'Aplicativo de transporte';
+      case 'delivery':
+        return 'Entregador';
+      case 'private':
+        return 'Motorista particular';
+      case 'taxi':
+        return 'Taxista';
+      default:
+        return type || 'Não informado';
+    }
+  };
+
   // Função para fazer logout
   const handleLogout = () => {
     Alert.alert(
@@ -143,7 +329,7 @@ const DriverProfileScreen = ({ navigation }) => {
       ]
     );
   };
-  
+
   if (loading && !driverData) {
     return (
       <View style={styles.loadingContainer}>
@@ -152,28 +338,113 @@ const DriverProfileScreen = ({ navigation }) => {
       </View>
     );
   }
-  
+
   return (
     <ScrollView style={styles.container}>
       {/* Cabeçalho do perfil */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
-          {driverData?.photoURL ? (
-            <Image source={{ uri: driverData.photoURL }} style={styles.avatar} />
+          {uploadingPhoto ? (
+            <ActivityIndicator size="large" color={theme.colors.primary} style={styles.avatar} />
+          ) : photoURL ? (
+            <TouchableOpacity onPress={handleChoosePhoto} disabled={!editMode}>
+              <Image source={{ uri: photoURL }} style={styles.avatar} />
+              {editMode && (
+                <View style={styles.editPhotoButton}>
+                  <MaterialCommunityIcons name="camera" size={20} color="white" />
+                </View>
+              )}
+            </TouchableOpacity>
           ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
+            <TouchableOpacity 
+              style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}
+              onPress={handleChoosePhoto}
+              disabled={!editMode}
+            >
               <Text style={styles.avatarText}>
                 {name.charAt(0).toUpperCase()}
               </Text>
-            </View>
+              {editMode && (
+                <View style={styles.editPhotoButton}>
+                  <MaterialCommunityIcons name="camera" size={20} color="white" />
+                </View>
+              )}
+            </TouchableOpacity>
           )}
         </View>
         
         <View style={styles.headerInfo}>
           <Text style={styles.userName}>{name}</Text>
           <Text style={styles.userType}>Motorista</Text>
+          
+          <View style={styles.badgesContainer}>
+            {/* Badge de verificação */}
+            <View style={[
+              styles.statusBadge,
+              {
+                backgroundColor: 
+                  verificationStatus === 'verified' ? '#4CAF50' : 
+                  verificationStatus === 'pending' ? '#FFC107' : '#F44336'
+              }
+            ]}>
+              <MaterialCommunityIcons 
+                name={
+                  verificationStatus === 'verified' ? 'check-circle' : 
+                  verificationStatus === 'pending' ? 'clock-outline' : 'close-circle'
+                } 
+                size={14} 
+                color="white" 
+              />
+              <Text style={styles.statusBadgeText}>
+                {verificationStatus === 'verified' ? 'Verificado' : 
+                 verificationStatus === 'pending' ? 'Pendente' : 'Rejeitado'}
+              </Text>
+            </View>
+            
+            {/* Badge de disponibilidade */}
+            <View style={[
+              styles.statusBadge,
+              { backgroundColor: isAvailable ? '#4CAF50' : '#757575' }
+            ]}>
+              <MaterialCommunityIcons 
+                name={isAvailable ? 'car' : 'car-off'} 
+                size={14} 
+                color="white" 
+              />
+              <Text style={styles.statusBadgeText}>
+                {isAvailable ? 'Disponível' : 'Indisponível'}
+              </Text>
+            </View>
+          </View>
         </View>
       </View>
+      
+      {/* Botão de alternância de disponibilidade */}
+      <Card style={styles.availabilityCard}>
+        <Card.Content style={styles.availabilityContent}>
+          <View style={styles.availabilityTextContainer}>
+            <Text style={styles.availabilityTitle}>
+              {isAvailable ? 'Você está disponível' : 'Você está indisponível'}
+            </Text>
+            <Text style={styles.availabilityDescription}>
+              {isAvailable 
+                ? 'Você está recebendo solicitações de acesso' 
+                : 'Você não está recebendo novas solicitações'}
+            </Text>
+          </View>
+          
+          <PaperButton 
+            mode="contained"
+            onPress={toggleAvailability}
+            style={[
+              styles.availabilityButton,
+              { backgroundColor: isAvailable ? '#F44336' : '#4CAF50' }
+            ]}
+          >
+            {isAvailable ? 'Ficar Indisponível' : 'Ficar Disponível'}
+          </PaperButton>
+        </Card.Content>
+      </Card>
       
       {/* Informações pessoais */}
       <Card style={styles.card}>
@@ -183,7 +454,7 @@ const DriverProfileScreen = ({ navigation }) => {
             // Modo de edição
             <>
               <Input
-                label="Nome"
+                label="Nome completo"
                 value={name}
                 onChangeText={setName}
                 placeholder="Seu nome completo"
@@ -194,8 +465,16 @@ const DriverProfileScreen = ({ navigation }) => {
                 label="Telefone"
                 value={phone}
                 onChangeText={setPhone}
-                placeholder="Seu telefone"
+                placeholder="Seu telefone de contato"
                 keyboardType="phone-pad"
+              />
+              
+              <Input
+                label="Tipo de Serviço"
+                value={serviceType}
+                onChangeText={setServiceType}
+                placeholder="Ex: Aplicativo, Taxista, Entregador"
+                autoCapitalize="words"
               />
             </>
           ) : (
@@ -228,6 +507,16 @@ const DriverProfileScreen = ({ navigation }) => {
                   <Text style={styles.infoValue}>{userProfile?.email || 'Não informado'}</Text>
                 </View>
               </View>
+              
+              <Divider style={styles.divider} />
+              
+              <View style={styles.infoRow}>
+                <MaterialCommunityIcons name="briefcase" size={24} color="#555" style={styles.icon} />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Tipo de Serviço</Text>
+                  <Text style={styles.infoValue}>{getServiceTypeLabel(serviceType)}</Text>
+                </View>
+              </View>
             </>
           )}
         </Card.Content>
@@ -251,10 +540,30 @@ const DriverProfileScreen = ({ navigation }) => {
               <Input
                 label="Placa do Veículo"
                 value={vehiclePlate}
-                onChangeText={setVehiclePlate}
+                onChangeText={handleVehiclePlateChange}
                 placeholder="Ex: ABC1234"
                 autoCapitalize="characters"
               />
+              
+              <View style={styles.rowInputs}>
+                <Input
+                  label="Cor"
+                  value={vehicleColor}
+                  onChangeText={setVehicleColor}
+                  placeholder="Ex: Preto"
+                  autoCapitalize="words"
+                  style={styles.halfInput}
+                />
+                
+                <Input
+                  label="Ano"
+                  value={vehicleYear}
+                  onChangeText={setVehicleYear}
+                  placeholder="Ex: 2022"
+                  keyboardType="numeric"
+                  style={styles.halfInput}
+                />
+              </View>
             </>
           ) : (
             // Modo de visualização
@@ -276,6 +585,24 @@ const DriverProfileScreen = ({ navigation }) => {
                   <Text style={styles.infoValue}>{vehiclePlate || 'Não informada'}</Text>
                 </View>
               </View>
+              
+              {(vehicleColor || vehicleYear) && (
+                <>
+                  <Divider style={styles.divider} />
+                  
+                  <View style={styles.infoRow}>
+                    <MaterialCommunityIcons name="palette" size={24} color="#555" style={styles.icon} />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Detalhes</Text>
+                      <Text style={styles.infoValue}>
+                        {vehicleColor ? `Cor: ${vehicleColor}` : ''}
+                        {vehicleColor && vehicleYear ? ' • ' : ''}
+                        {vehicleYear ? `Ano: ${vehicleYear}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
             </>
           )}
         </Card.Content>
@@ -287,51 +614,24 @@ const DriverProfileScreen = ({ navigation }) => {
         <Card.Content>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>0</Text>
-              <Text style={styles.statLabel}>Acessos pendentes</Text>
+              <Text style={styles.statValue}>{stats.totalTrips}</Text>
+              <Text style={styles.statLabel}>Total de Viagens</Text>
             </View>
             
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>0</Text>
-              <Text style={styles.statLabel}>Acessos concluídos</Text>
+              <Text style={styles.statValue}>{stats.pendingRequests}</Text>
+              <Text style={styles.statLabel}>Pendentes</Text>
             </View>
             
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>0</Text>
-              <Text style={styles.statLabel}>Total de acessos</Text>
+              <Text style={styles.statValue}>{stats.rating.toFixed(1)}</Text>
+              <Text style={styles.statLabel}>Avaliação</Text>
             </View>
           </View>
         </Card.Content>
       </Card>
       
-      {/* Botões de ação */
-      // Adicione no DriverProfileScreen, dentro dos botões de ação:
-
-<Button
-  mode="outlined"
-  icon="bell"
-  onPress={async () => {
-    try {
-      // Importar serviço de notificação
-      const NotificationService = require('../../services/notification.service').default;
-      
-      // Enviar notificação de teste
-      await NotificationService.sendLocalNotification(
-        'Notificação de Teste',
-        'Esta é uma notificação de teste do Condy',
-        { type: 'test' }
-      );
-      
-      Alert.alert('Sucesso', 'Notificação de teste enviada');
-    } catch (error) {
-      console.error('Erro ao enviar notificação de teste:', error);
-      Alert.alert('Erro', 'Não foi possível enviar a notificação de teste');
-    }
-  }}
-  style={styles.actionButton}
->
-  Testar Notificação
-</Button>}
+      {/* Botões de ação */}
       <View style={styles.actionsContainer}>
         {editMode ? (
           // Botões para salvar/cancelar edição
@@ -367,6 +667,15 @@ const DriverProfileScreen = ({ navigation }) => {
               style={styles.actionButton}
             >
               Editar Perfil
+            </Button>
+            
+            <Button
+              mode="outlined"
+              icon="cog"
+              onPress={() => navigation.navigate('DriverSettings')}
+              style={styles.actionButton}
+            >
+              Configurações
             </Button>
             
             <Button
@@ -419,6 +728,17 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
+  editPhotoButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   headerInfo: {
     flex: 1,
   },
@@ -430,6 +750,50 @@ const styles = StyleSheet.create({
   userType: {
     fontSize: 16,
     color: '#757575',
+    marginBottom: 8,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  statusBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  availabilityCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  availabilityContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  availabilityTextContainer: {
+    flex: 1,
+  },
+  availabilityTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  availabilityDescription: {
+    fontSize: 14,
+    color: '#757575',
+  },
+  availabilityButton: {
+    marginLeft: 16,
   },
   card: {
     marginHorizontal: 16,
@@ -481,6 +845,13 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     marginBottom: 12,
+  },
+  rowInputs: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  halfInput: {
+    width: '48%',
   },
   loadingContainer: {
     flex: 1,

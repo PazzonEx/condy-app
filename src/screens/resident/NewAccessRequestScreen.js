@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, useTheme, Checkbox } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { Text, useTheme, Checkbox, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Hooks personalizados
@@ -10,11 +10,13 @@ import { useAuth } from '../../hooks/useAuth';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import Card from '../../components/Card';
+import AutocompleteInput from '../../components/AutocompleteInput';
 
 // Serviços
 import AccessService from '../../services/access.service';
 import FirestoreService from '../../services/firestore.service';
 import { auth } from '../../config/firebase';
+
 // Utilitários
 import { isValidVehiclePlate } from '../../utils/validation';
 import { formatVehiclePlate } from '../../utils/format';
@@ -22,7 +24,6 @@ import { formatVehiclePlate } from '../../utils/format';
 const NewAccessRequestScreen = ({ navigation }) => {
   const theme = useTheme();
   const { userProfile } = useAuth();
-  const { currentUser } = auth; // Obtenha o usuário atual diretamente
   
   // Estados para formulário
   const [driverName, setDriverName] = useState('');
@@ -35,43 +36,76 @@ const NewAccessRequestScreen = ({ navigation }) => {
   const [savedDrivers, setSavedDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [formErrors, setFormErrors] = useState({});
+  const [searchDriver, setSearchDriver] = useState('');
+  const [allDrivers, setAllDrivers] = useState([]);
+  const [showSearchSection, setShowSearchSection] = useState(false);
 
   // Verificar se o usuário está autenticado
   useEffect(() => {
-    if (!currentUser) {
+    if (!auth.currentUser) {
       Alert.alert(
         'Erro de Autenticação',
         'Você precisa estar logado para acessar esta tela.',
         [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
       );
     }
-  }, [currentUser, navigation]);
+  }, [navigation]);
   
-
   // Carregar motoristas salvos
   useEffect(() => {
     const loadSavedDrivers = async () => {
-  const currentUser = auth.currentUser;
-  
-  if (!currentUser) return;
-  
-  try {
-    setLoadingDrivers(true);
-    
-    // Buscar motoristas salvos pelo morador
-    const conditions = [
-      { field: 'residentId', operator: '==', value: currentUser.uid }, // Use auth.currentUser.uid diretamente
-      { field: 'type', operator: '==', value: 'saved_driver' }
-    ];
-    
-    const drivers = await FirestoreService.queryDocuments('saved_drivers', conditions);
-    setSavedDrivers(drivers);
-  } catch (error) {
-    console.error('Erro ao carregar motoristas salvos:', error);
-  } finally {
-    setLoadingDrivers(false);
-  }
-};
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) return;
+      
+      try {
+        setLoadingDrivers(true);
+        
+        // Buscar motoristas salvos pelo morador
+        const conditions = [
+          { field: 'residentId', operator: '==', value: currentUser.uid },
+          { field: 'type', operator: '==', value: 'saved_driver' }
+        ];
+        
+        const drivers = await FirestoreService.queryDocuments('saved_drivers', conditions);
+        setSavedDrivers(drivers);
+        
+        // Buscar todos os motoristas do sistema (limitados a 100)
+        const allDriversConditions = [
+          { field: 'type', operator: '==', value: 'driver' }
+        ];
+        
+        const allDriversQuery = await FirestoreService.queryDocuments(
+          'users', 
+          allDriversConditions, 
+          { field: 'displayName', direction: 'asc' },
+          100
+        );
+        
+        // Obter detalhes adicionais dos motoristas
+        const driversWithDetails = await Promise.all(
+          allDriversQuery.map(async (driver) => {
+            try {
+              const details = await FirestoreService.getDocument('drivers', driver.id);
+              return {
+                ...driver,
+                ...(details || {}),
+                id: driver.id
+              };
+            } catch (err) {
+              return driver;
+            }
+          })
+        );
+        
+        setAllDrivers(driversWithDetails);
+      } catch (error) {
+        console.error('Erro ao carregar motoristas:', error);
+        Alert.alert('Erro', 'Não foi possível carregar a lista de motoristas.');
+      } finally {
+        setLoadingDrivers(false);
+      }
+    };
     
     loadSavedDrivers();
   }, [userProfile]);
@@ -80,8 +114,9 @@ const NewAccessRequestScreen = ({ navigation }) => {
   const handleSelectDriver = (driver) => {
     setSelectedDriver(driver);
     setDriverName(driver.name);
-    setVehiclePlate(driver.vehiclePlate);
+    setVehiclePlate(driver.vehiclePlate || '');
     setVehicleModel(driver.vehicleModel || '');
+    setSearchDriver('');
   };
 
   // Limpar seleção
@@ -90,6 +125,16 @@ const NewAccessRequestScreen = ({ navigation }) => {
     setDriverName('');
     setVehiclePlate('');
     setVehicleModel('');
+  };
+  
+  // Selecionar motorista da pesquisa
+  const handleSelectSearchedDriver = (driver) => {
+    setSelectedDriver(driver);
+    setDriverName(driver.name || driver.displayName);
+    setVehiclePlate(driver.vehiclePlate || '');
+    setVehicleModel(driver.vehicleModel || '');
+    setSearchDriver('');
+    setShowSearchSection(false);
   };
 
   // Formatar placa do veículo
@@ -132,117 +177,209 @@ const NewAccessRequestScreen = ({ navigation }) => {
   };
 
   // Manipulador para envio do formulário
-  
-const handleSubmit = async () => {
-  if (!validateForm()) {
-    return;
-  }
-
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    Alert.alert('Erro', 'Usuário não autenticado');
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    // Salvar motorista, se marcado
-    if (saveDriver && !selectedDriver) {
-      try {
-        await FirestoreService.createDocument('saved_drivers', {
-          name: driverName,
-          vehiclePlate: vehiclePlate.toUpperCase(),
-          vehicleModel,
-          residentId: currentUser.uid, // Use auth.currentUser.uid diretamente
-          type: 'saved_driver'
-        });
-      } catch (error) {
-        console.error('Erro ao salvar motorista:', error);
-        // Continuar mesmo se falhar ao salvar o motorista
-      }
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      return;
     }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      Alert.alert('Erro', 'Usuário não autenticado');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Salvar motorista, se marcado
+      if (saveDriver && !selectedDriver) {
+        try {
+          await FirestoreService.createDocument('saved_drivers', {
+            name: driverName,
+            vehiclePlate: vehiclePlate.toUpperCase(),
+            vehicleModel,
+            residentId: currentUser.uid,
+            type: 'saved_driver'
+          });
+        } catch (error) {
+          console.error('Erro ao salvar motorista:', error);
+          // Continuar mesmo se falhar ao salvar o motorista
+        }
+      }
+      
+      // Preparar dados da solicitação
+      const requestData = {
+        driverName,
+        vehiclePlate: vehiclePlate.toUpperCase(),
+        vehicleModel,
+        comment,
+        type: 'driver',
+        unit: userProfile?.unit || '',
+        block: userProfile?.block || '',
+        residentId: currentUser.uid,
+        driverId: selectedDriver?.type === 'driver' ? selectedDriver.id : null,
+        condoId: userProfile?.condoId || 'temp_condo_id'
+      };
+      
+      // Criar solicitação de acesso
+      await AccessService.createAccessRequest(requestData);
+      
+      // Exibir mensagem de sucesso
+      Alert.alert(
+        'Sucesso',
+        'Solicitação de acesso criada com sucesso',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+    } catch (error) {
+      console.error('Erro ao criar solicitação:', error);
+      Alert.alert('Erro', 'Não foi possível criar a solicitação de acesso');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filtrar motoristas para autocomplete
+  const filterDrivers = (data, query) => {
+    if (!query || query.length < 2) return [];
     
-    // Preparar dados da solicitação
-    const requestData = {
-      driverName,
-      vehiclePlate: vehiclePlate.toUpperCase(),
-      vehicleModel,
-      comment,
-      type: 'driver',
-      unit: userProfile?.unit || '',
-      block: userProfile?.block || '',
-      residentId: currentUser.uid, // Use auth.currentUser.uid diretamente
-      condoId: userProfile?.condoId || 'temp_condo_id' // Use um valor padrão temporário
-    };
-    
-    // Criar solicitação de acesso
-    await AccessService.createAccessRequest(requestData);
-    
-    // Exibir mensagem de sucesso
-    Alert.alert(
-      'Sucesso',
-      'Solicitação de acesso criada com sucesso',
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
-    );
-  } catch (error) {
-    console.error('Erro ao criar solicitação:', error);
-    Alert.alert('Erro', 'Não foi possível criar a solicitação de acesso');
-  } finally {
-    setLoading(false);
-  }
-};
+    const queryLower = query.toLowerCase();
+    return data.filter(driver => {
+      const name = (driver.name || driver.displayName || '').toLowerCase();
+      const plate = (driver.vehiclePlate || '').toLowerCase();
+      return name.includes(queryLower) || plate.includes(queryLower);
+    });
+  };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       <Card style={styles.card}>
         <Text style={styles.title}>Nova Solicitação de Acesso</Text>
         
-        {/* Seleção de motorista salvo */}
-        {savedDrivers.length > 0 && (
-          <View style={styles.savedDriversSection}>
-            <Text style={styles.sectionTitle}>Motoristas Salvos</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.savedDriversList}
+        {/* Abas de seleção de modo */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              !showSearchSection && styles.activeTab
+            ]}
+            onPress={() => setShowSearchSection(false)}
+          >
+            <MaterialCommunityIcons 
+              name="account-multiple" 
+              size={20} 
+              color={!showSearchSection ? theme.colors.primary : '#757575'} 
+            />
+            <Text 
+              style={[
+                styles.tabText, 
+                !showSearchSection && { color: theme.colors.primary, fontWeight: 'bold' }
+              ]}
             >
-              {savedDrivers.map((driver) => (
-                <Card
-                  key={driver.id}
-                  style={[
-                    styles.driverCard,
-                    selectedDriver?.id === driver.id && {
-                      borderColor: theme.colors.primary,
-                      borderWidth: 2
-                    }
-                  ]}
-                  onPress={() => handleSelectDriver(driver)}
+              Motoristas Salvos
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              showSearchSection && styles.activeTab
+            ]}
+            onPress={() => setShowSearchSection(true)}
+          >
+            <MaterialCommunityIcons 
+              name="account-search" 
+              size={20} 
+              color={showSearchSection ? theme.colors.primary : '#757575'} 
+            />
+            <Text 
+              style={[
+                styles.tabText, 
+                showSearchSection && { color: theme.colors.primary, fontWeight: 'bold' }
+              ]}
+            >
+              Buscar Motorista
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Seleção de motorista salvo */}
+        {!showSearchSection && (
+          <View style={styles.savedDriversSection}>
+            {savedDrivers.length > 0 ? (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.savedDriversList}
+                contentContainerStyle={styles.savedDriversContent}
+              >
+                {savedDrivers.map((driver) => (
+                  <TouchableOpacity
+                    key={driver.id}
+                    style={[
+                      styles.driverCard,
+                      selectedDriver?.id === driver.id && {
+                        borderColor: theme.colors.primary,
+                        borderWidth: 2
+                      }
+                    ]}
+                    onPress={() => handleSelectDriver(driver)}
+                  >
+                    <MaterialCommunityIcons
+                      name="account-circle"
+                      size={30}
+                      color={theme.colors.primary}
+                    />
+                    <Text style={styles.driverName}>{driver.name}</Text>
+                    <Text style={styles.driverPlate}>{driver.vehiclePlate || 'Sem placa'}</Text>
+                  </TouchableOpacity>
+                ))}
+                
+                <TouchableOpacity
+                  style={styles.newDriverCard}
+                  onPress={handleClearSelection}
                 >
                   <MaterialCommunityIcons
-                    name="account-circle"
+                    name="plus-circle"
                     size={30}
                     color={theme.colors.primary}
                   />
-                  <Text style={styles.driverName}>{driver.name}</Text>
-                  <Text style={styles.driverPlate}>{driver.vehiclePlate}</Text>
-                </Card>
-              ))}
-              
-              <Card
-                style={styles.newDriverCard}
-                onPress={handleClearSelection}
-              >
-                <MaterialCommunityIcons
-                  name="plus-circle"
-                  size={30}
-                  color={theme.colors.primary}
-                />
-                <Text style={styles.newDriverText}>Novo Motorista</Text>
-              </Card>
-            </ScrollView>
+                  <Text style={styles.newDriverText}>Novo Motorista</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : (
+              <View style={styles.noDriversContainer}>
+                <Text style={styles.noDriversText}>
+                  Não há motoristas salvos.
+                </Text>
+                <Text style={styles.noDriversSubtext}>
+                  Adicione um novo motorista abaixo.
+                </Text>
+              </View>
+            )}
           </View>
         )}
+        
+        {/* Pesquisa de motorista */}
+        {showSearchSection && (
+          <View style={styles.searchSection}>
+            <AutocompleteInput
+              label="Buscar Motorista"
+              value={searchDriver}
+              onChangeText={setSearchDriver}
+              data={allDrivers}
+              textKey="displayName"
+              subtextKey="vehiclePlate"
+              iconName="account"
+              onSelect={handleSelectSearchedDriver}
+              placeholder="Digite o nome do motorista..."
+              disabled={loading}
+              minChars={2}
+              filterFunction={filterDrivers}
+            />
+          </View>
+        )}
+        
+        <Divider style={styles.divider} />
         
         {/* Formulário principal */}
         <Input
@@ -294,12 +431,13 @@ const handleSubmit = async () => {
               color={theme.colors.primary}
               disabled={loading}
             />
-            <Text 
+            <TouchableOpacity 
               style={styles.checkboxLabel} 
               onPress={() => setSaveDriver(!saveDriver)}
+              disabled={loading}
             >
-              Salvar este motorista para futuras solicitações
-            </Text>
+              <Text>Salvar este motorista para futuras solicitações</Text>
+            </TouchableOpacity>
           </View>
         )}
         
@@ -342,10 +480,30 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
+  tabContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#1E88E5',
+  },
+  tabText: {
+    marginLeft: 8,
+    color: '#757575',
+  },
+  divider: {
+    marginVertical: 16,
   },
   savedDriversSection: {
     marginBottom: 20,
@@ -354,11 +512,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingBottom: 10,
   },
+  savedDriversContent: {
+    paddingRight: 10,
+  },
   driverCard: {
-    padding: 10,
+    padding: 12,
     marginRight: 10,
     alignItems: 'center',
     width: 100,
+    borderRadius: 8,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    elevation: 2,
   },
   driverName: {
     fontSize: 12,
@@ -369,18 +535,45 @@ const styles = StyleSheet.create({
   driverPlate: {
     fontSize: 12,
     textAlign: 'center',
+    color: '#757575',
   },
   newDriverCard: {
-    padding: 10,
+    padding: 12,
     marginRight: 10,
     alignItems: 'center',
     width: 100,
     justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderStyle: 'dashed',
   },
   newDriverText: {
     fontSize: 12,
     textAlign: 'center',
     marginTop: 5,
+    color: '#757575',
+  },
+  noDriversContainer: {
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  noDriversText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  noDriversSubtext: {
+    fontSize: 14,
+    color: '#757575',
+    textAlign: 'center',
+  },
+  searchSection: {
+    marginBottom: 16,
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -388,6 +581,7 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   checkboxLabel: {
+    flex: 1,
     marginLeft: 8,
   },
   button: {

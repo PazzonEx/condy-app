@@ -8,6 +8,8 @@ import { useTheme } from 'react-native-paper';
 import DriverHomeScreen from '../screens/driver/DriverHomeScreen';
 import DriverAccessDetailsScreen from '../screens/driver/DriverAccessDetailsScreen';
 import DriverProfileScreen from '../screens/driver/DriverProfileScreen';
+import DriverSettingsScreen from '../screens/driver/DriverSettingsScreen';
+
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
@@ -65,6 +67,12 @@ const ProfileStackNavigator = () => {
         component={DriverProfileScreen} 
         options={{ title: 'Meu Perfil' }}
       />
+      <ProfileStack.Screen 
+        name="DriverSettings" 
+        component={DriverSettingsScreen} 
+        options={{ title: 'Meu Perfil' }}
+      />
+      
     </ProfileStack.Navigator>
   );
 };

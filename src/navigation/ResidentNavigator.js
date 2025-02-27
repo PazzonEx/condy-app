@@ -9,8 +9,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ResidentHomeScreen from '../screens/resident/ResidentHomeScreen';
 import NewAccessRequestScreen from '../screens/resident/NewAccessRequestScreen';
 import AccessHistoryScreen from '../screens/resident/AccessHistoryScreen';
-import ProfileScreen from '../screens/resident/ProfileScreen';
+import ResidentProfileScreen from '../screens/resident/ResidentProfileScreen';
 import AccessDetailsScreen from '../screens/resident/AccessDetailsScreen';
+import ResidentSettingsScreen from '../screens/resident/ResidentSettingsScreen';
+
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
@@ -101,7 +103,12 @@ const ProfileStackNavigator = () => {
     >
       <ProfileStack.Screen 
         name="Profile" 
-        component={ProfileScreen} 
+        component={ResidentProfileScreen} 
+        options={{ title: 'Meu Perfil' }}
+      />
+      <ProfileStack.Screen 
+        name="Settings" 
+        component={ResidentSettingsScreen} 
         options={{ title: 'Meu Perfil' }}
       />
     </ProfileStack.Navigator>

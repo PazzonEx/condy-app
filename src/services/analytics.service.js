@@ -1,5 +1,5 @@
 // src/services/analytics.service.js
-import { firestore } from '../config/firebase';
+import { firestore, auth } from '../config/firebase'; // Atualize para importar auth
 import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 
 const AnalyticsService = {
@@ -11,7 +11,19 @@ const AnalyticsService = {
    * @returns {Promise<Object>} Dados estatísticos
    */
   async generateAccessReport(condoId, startDate, endDate) {
+    
     try {
+
+      // Verificar se o usuário está autenticado
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+
+       // Se condoId não for fornecido, use o ID do usuário atual
+       const targetCondoId = condoId || currentUser.uid;
+
+
       const accessQuery = query(
         collection(firestore, 'access_requests'),
         where('condoId', '==', condoId),
@@ -110,15 +122,29 @@ const AnalyticsService = {
    * @param {string} condoId ID do condomínio
    * @returns {Promise<Object>} Estatísticas do último mês
    */
+  /**
+   * Obter estatísticas rápidas para o dashboard
+   * @param {string} condoId ID do condomínio
+   * @returns {Promise<Object>} Estatísticas do último mês
+   */
   async getQuickStats(condoId) {
     try {
+      // Verificar se o usuário está autenticado
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Se não for fornecido um condoId, usar o ID do usuário atual
+      const targetCondoId = condoId || user.uid;
+      
       // Definir período para o último mês
       const endDate = new Date();
       const startDate = new Date();
       startDate.setMonth(startDate.getMonth() - 1);
       
       // Obter dados do último mês
-      const stats = await this.generateAccessReport(condoId, startDate, endDate);
+      const stats = await this.generateAccessReport(targetCondoId, startDate, endDate);
       
       // Calcular estatísticas adicionais
       const approvalRate = stats.totalRequests > 0 ? 
@@ -152,7 +178,8 @@ const AnalyticsService = {
       console.error('Erro ao obter estatísticas rápidas:', error);
       throw error;
     }
-  }
+  },
+  
 };
 
 export default AnalyticsService;

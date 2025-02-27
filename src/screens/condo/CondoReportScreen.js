@@ -1,14 +1,20 @@
 // src/screens/condo/CondoReportScreen.js
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView , Alert} from 'react-native';
 import { Text, Card, useTheme, ActivityIndicator, Divider, Title, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { auth } from '../../config/firebase'; // Adicionar importação do auth
+
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
 
 // Serviços
 import AnalyticsService from '../../services/analytics.service';
+
+// Componentes personalizados
+import CustomButton from '../../components/Button'; // Se você tiver um componente Button personalizado
+
 
 const CondoReportScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -21,32 +27,47 @@ const CondoReportScreen = ({ navigation }) => {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
 
-  // Função para gerar relatório
-  const generateReport = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Verificar se há um usuário autenticado
-      if (!userProfile || !userProfile.uid) {
-        throw new Error('Usuário não autenticado');
-      }
-      
-      // Obter relatório
-      const reportData = await AnalyticsService.generateAccessReport(
-        userProfile.uid,
-        startDate,
-        endDate
-      );
-      
-      setReport(reportData);
-    } catch (error) {
-      console.error('Erro ao gerar relatório:', error);
-      setError('Não foi possível gerar o relatório. Tente novamente mais tarde.');
-    } finally {
-      setLoading(false);
+ // Função para gerar relatório
+ const generateReport = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    
+    // Verificar se há um usuário autenticado
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('Usuário não autenticado');
     }
-  };
+    
+    // Obter relatório usando o ID do usuário atual
+    const reportData = await AnalyticsService.generateAccessReport(
+      currentUser.uid,
+      startDate,
+      endDate
+    );
+    
+    setReport(reportData);
+  } catch (error) {
+    console.error('Erro ao gerar relatório:', error);
+    setError('Não foi possível gerar o relatório. Tente novamente mais tarde.');
+    
+    // Verificar se é um erro de autenticação
+    if (error.message.includes('autenticado')) {
+      Alert.alert(
+        'Erro de Autenticação',
+        'Você precisa estar logado para gerar relatórios. Tente fazer login novamente.',
+        [
+          { 
+            text: 'OK', 
+            onPress: () => navigation.navigate('Auth')
+          }
+        ]
+      );
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Manipuladores para datepickers
   const onStartDateChange = (event, selectedDate) => {
@@ -59,6 +80,30 @@ const CondoReportScreen = ({ navigation }) => {
     const currentDate = selectedDate || endDate;
     setShowEndPicker(false);
     setEndDate(currentDate);
+  };
+  // Função para verificar autenticação e tentar novamente
+  const handleRetry = () => {
+    // Verificar se o usuário está autenticado
+    if (!auth.currentUser) {
+      Alert.alert(
+        'Erro de Autenticação',
+        'Você precisa estar logado para acessar esta tela. Tente fazer login novamente.',
+        [
+          { 
+            text: 'Fazer Login', 
+            onPress: () => navigation.navigate('Auth')
+          },
+          {
+            text: 'Cancelar',
+            style: 'cancel'
+          }
+        ]
+      );
+      return;
+    }
+    
+    // Se estiver autenticado, tentar gerar o relatório novamente
+    generateReport();
   };
 
   return (
@@ -135,6 +180,20 @@ const CondoReportScreen = ({ navigation }) => {
         <View style={styles.errorContainer}>
           <MaterialCommunityIcons name="alert-circle" size={36} color={theme.colors.error} />
           <Text style={styles.errorText}>{error}</Text>
+          <Button
+            mode="contained"
+            onPress={handleRetry}
+            style={styles.retryButton}
+          >
+            Tentar Novamente
+          </Button>
+          <Button
+            mode="outlined"
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            Voltar
+          </Button>
         </View>
       )}
       
@@ -378,6 +437,12 @@ const styles = StyleSheet.create({
   rankingName: {
     flex: 1,
     fontSize: 16,
+  }, retryButton: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  backButton: {
+    marginBottom: 16,
   },
   rankingCount: {
     fontSize: 16,

@@ -1,15 +1,20 @@
 // src/screens/condo/CondoDashboardScreen.js
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, Dimensions ,Alert} from 'react-native';
 import { Text, Card, useTheme, ActivityIndicator, Divider, Title } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
+import { auth } from '../../config/firebase'; // Adicionar importação do auth
+
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
 
 // Serviços
 import AnalyticsService from '../../services/analytics.service';
+
+// Componentes
+import Button from '../../components/Button';
 
 const CondoDashboardScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -19,30 +24,52 @@ const CondoDashboardScreen = ({ navigation }) => {
   const [error, setError] = useState(null);
   const screenWidth = Dimensions.get('window').width - 32;
 
-  // Carregar estatísticas
   useEffect(() => {
-    const loadStats = async () => {
-      try {
-        setLoading(true);
-        
-        // Verificar se há um usuário autenticado
-        if (!userProfile || !userProfile.uid) {
-          throw new Error('Usuário não autenticado');
-        }
-        
-        // Obter estatísticas
-        const quickStats = await AnalyticsService.getQuickStats(userProfile.uid);
-        setStats(quickStats);
-      } catch (error) {
-        console.error('Erro ao carregar estatísticas:', error);
-        setError('Não foi possível carregar as estatísticas. Tente novamente mais tarde.');
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Verificar se o usuário está autenticado
+    if (!auth.currentUser) {
+      setError('Você precisa estar autenticado para acessar esta tela');
+      setLoading(false);
+      return;
+    }
     
     loadStats();
-  }, [userProfile]);
+  }, []);
+
+  // Carregar estatísticas
+  const loadStats = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Verificar se há um usuário autenticado
+      if (!auth.currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Obter estatísticas usando o ID do usuário atual
+      const quickStats = await AnalyticsService.getQuickStats(auth.currentUser.uid);
+      setStats(quickStats);
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
+      setError('Não foi possível carregar as estatísticas. Tente novamente mais tarde.');
+      
+      // Verificar especificamente se é um erro de autenticação
+      if (error.message.includes('autenticado')) {
+        Alert.alert(
+          'Erro de Autenticação',
+          'Você precisa estar logado para acessar esta tela. Tente fazer login novamente.',
+          [
+            { 
+              text: 'OK', 
+              onPress: () => navigation.navigate('Auth')
+            }
+          ]
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -58,6 +85,20 @@ const CondoDashboardScreen = ({ navigation }) => {
       <View style={styles.errorContainer}>
         <MaterialCommunityIcons name="alert-circle" size={48} color={theme.colors.error} />
         <Text style={styles.errorText}>{error}</Text>
+        <Button 
+          mode="contained" 
+          onPress={loadStats} 
+          style={styles.retryButton}
+        >
+          Tentar Novamente
+        </Button>
+        <Button 
+          mode="outlined" 
+          onPress={() => navigation.goBack()} 
+          style={styles.backButton}
+        >
+          Voltar
+        </Button>
       </View>
     );
   }
@@ -342,6 +383,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#757575',
+  },retryButton: {
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  backButton: {
+    marginBottom: 20,
   },
   rankingName: {
     flex: 1,
