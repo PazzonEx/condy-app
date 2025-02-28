@@ -9,14 +9,16 @@ import DriverHomeScreen from '../screens/driver/DriverHomeScreen';
 import DriverAccessDetailsScreen from '../screens/driver/DriverAccessDetailsScreen';
 import DriverProfileScreen from '../screens/driver/DriverProfileScreen';
 import DriverSettingsScreen from '../screens/driver/DriverSettingsScreen';
-
+import DriverCondoSearchScreen from '../screens/driver/DriverCondoSearchScreen';
+import DriverQRCodeScreen from '../screens/driver/DriverQRCodeScreen';
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
 const HomeStack = createStackNavigator();
+const SearchStack = createStackNavigator();
 const ProfileStack = createStackNavigator();
 
-// Stack para a aba Home
+// Stack para a aba Home (Solicitações)
 const HomeStackNavigator = () => {
   const theme = useTheme();
   
@@ -46,6 +48,36 @@ const HomeStackNavigator = () => {
   );
 };
 
+// Stack para a aba Busca de Condomínios
+const SearchStackNavigator = () => {
+  const theme = useTheme();
+  
+  return (
+    <SearchStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.primary,
+        },
+        headerTintColor: 'white',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <SearchStack.Screen 
+        name="DriverCondoSearch" 
+        component={DriverCondoSearchScreen} 
+        options={{ title: 'Buscar Condomínio' }}
+      />
+      <SearchStack.Screen 
+        name="DriverQRCode" 
+        component={DriverQRCodeScreen} 
+        options={{ title: 'Gerar QR Code' }}
+      />
+    </SearchStack.Navigator>
+  );
+};
+
 // Stack para a aba Perfil
 const ProfileStackNavigator = () => {
   const theme = useTheme();
@@ -70,9 +102,8 @@ const ProfileStackNavigator = () => {
       <ProfileStack.Screen 
         name="DriverSettings" 
         component={DriverSettingsScreen} 
-        options={{ title: 'Meu Perfil' }}
+        options={{ title: 'Configurações' }}
       />
-      
     </ProfileStack.Navigator>
   );
 };
@@ -90,6 +121,9 @@ const DriverNavigator = () => {
           switch (route.name) {
             case 'Home':
               iconName = focused ? 'view-dashboard' : 'view-dashboard-outline';
+              break;
+            case 'Search':
+              iconName = focused ? 'office-building-marker' : 'office-building';
               break;
             case 'Profile':
               iconName = focused ? 'account' : 'account-outline';
@@ -109,6 +143,11 @@ const DriverNavigator = () => {
         name="Home" 
         component={HomeStackNavigator} 
         options={{ tabBarLabel: 'Solicitações' }}
+      />
+      <Tab.Screen 
+        name="Search" 
+        component={SearchStackNavigator} 
+        options={{ tabBarLabel: 'Buscar Condomínio' }}
       />
       <Tab.Screen 
         name="Profile" 
