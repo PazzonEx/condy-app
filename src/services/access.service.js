@@ -14,6 +14,8 @@ const AccessService = {
 
 // Modificação no método createAccessRequest em src/services/access.service.js
 
+// Atualizar o método createAccessRequest em src/services/access.service.js
+
 async createAccessRequest(requestData) {
   try {
     const currentUser = auth.currentUser;
@@ -22,19 +24,18 @@ async createAccessRequest(requestData) {
       throw new Error('Usuário não autenticado');
     }
     
-    // Verificar o tipo de usuário
-    const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
-    
-    // Se for um condomínio, verificar limite de solicitações
-    if (userDoc && userDoc.type === 'condo') {
-      // Importar o serviço de pagamento
-      const PaymentService = require('./payment.service').default;
-      
-      // Verificar se atingiu o limite
-      const hasReachedLimit = await PaymentService.hasReachedRequestLimit();
-      
-      if (hasReachedLimit) {
-        throw new Error('Limite de solicitações atingido. Faça upgrade do seu plano para continuar.');
+    // Verificar se os IDs necessários estão presentes
+    if (!requestData.condoId) {
+      // Se não houver condoId, buscar automaticamente o condoId do morador
+      if (requestData.residentId || currentUser.uid) {
+        const residentId = requestData.residentId || currentUser.uid;
+        const residentDoc = await FirestoreService.getDocument('residents', residentId);
+        
+        if (residentDoc && residentDoc.condoId) {
+          requestData.condoId = residentDoc.condoId;
+        } else {
+          throw new Error('Não foi possível determinar o condomínio para esta solicitação');
+        }
       }
     }
     
@@ -44,6 +45,8 @@ async createAccessRequest(requestData) {
       residentId: requestData.residentId || currentUser.uid,
       status: 'pending',
       createdBy: currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     };
     
     // Criar documento no Firestore
@@ -64,6 +67,8 @@ async createAccessRequest(requestData) {
  * @param {number} limit - Limite de resultados (opcional)
  * @returns {Promise<Array>} - Array de solicitações de acesso
  */
+// Atualizar a função getAccessRequests em src/services/access.service.js
+
 async getAccessRequests(status = null, limit = null) {
   try {
     const currentUser = auth.currentUser;
@@ -78,6 +83,9 @@ async getAccessRequests(status = null, limit = null) {
     if (!userProfile) {
       throw new Error('Perfil de usuário não encontrado');
     }
+    
+    console.log('Buscando solicitações para usuário tipo:', userProfile.type);
+    console.log('ID do usuário:', currentUser.uid);
     
     const conditions = [];
     
@@ -94,6 +102,7 @@ async getAccessRequests(status = null, limit = null) {
       case 'condo':
         // Condomínios veem solicitações para seu condomínio
         conditions.push({ field: 'condoId', operator: '==', value: currentUser.uid });
+        console.log('Adicionando filtro de condoId para condomínio:', currentUser.uid);
         break;
       // Admin não precisa de filtro adicional, verá todas as solicitações
     }
@@ -111,11 +120,16 @@ async getAccessRequests(status = null, limit = null) {
       }
     }
     
+    console.log('Condições de busca:', JSON.stringify(conditions));
+    
     // Ordenar por data de criação (mais recentes primeiro)
     const sortBy = { field: 'createdAt', direction: 'desc' };
     
     // Buscar solicitações de acesso
-    return await FirestoreService.queryDocuments('access_requests', conditions, sortBy, limit);
+    const requests = await FirestoreService.queryDocuments('access_requests', conditions, sortBy, limit);
+    console.log(`Encontradas ${requests.length} solicitações`);
+    
+    return requests;
   } catch (error) {
     console.error('Erro ao obter solicitações de acesso:', error);
     throw error;

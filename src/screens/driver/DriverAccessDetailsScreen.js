@@ -136,20 +136,36 @@ const DriverAccessDetailsScreen = ({ route, navigation }) => {
   }, [qrCodeData]);
   
   // Carregar detalhes da solicitação
-  const loadRequestDetails = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const details = await AccessService.getAccessRequestDetails(requestId);
-      setRequestDetails(details);
-    } catch (error) {
-      console.error('Erro ao carregar detalhes da solicitação:', error);
-      setError('Não foi possível carregar os detalhes da solicitação');
-    } finally {
-      setLoading(false);
+  // No método loadRequestDetails, adicione tratamento para evitar erros quando não encontrar documentos:
+
+const loadRequestDetails = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    
+    const details = await AccessService.getAccessRequestDetails(requestId);
+    
+    // Verificar se os documentos relacionados existem
+    if (!details.resident) {
+      console.warn(`Documento residente não encontrado para ID: ${details.residentId}`);
+      // Criar um objeto mínimo para evitar erros na interface
+      details.resident = { name: 'Morador não encontrado', unit: details.unit, block: details.block };
     }
-  };
+    
+    if (!details.condo) {
+      console.warn(`Documento condomínio não encontrado para ID: ${details.condoId}`);
+      // Criar um objeto mínimo para evitar erros na interface
+      details.condo = { name: 'Condomínio não encontrado', address: 'Endereço não disponível' };
+    }
+    
+    setRequestDetails(details);
+  } catch (error) {
+    console.error('Erro ao carregar detalhes da solicitação:', error);
+    setError('Não foi possível carregar os detalhes da solicitação');
+  } finally {
+    setLoading(false);
+  }
+};
   
   // Gerar QR Code para solicitação
   const handleGenerateQRCode = async () => {
