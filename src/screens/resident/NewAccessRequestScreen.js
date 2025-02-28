@@ -207,19 +207,19 @@ const NewAccessRequestScreen = ({ navigation }) => {
         }
       }
       
-     // Preparar dados da solicitação
-const requestData = {
-  driverName,
-  vehiclePlate: vehiclePlate.toUpperCase(),
-  vehicleModel,
-  comment,
-  type: 'driver',
-  unit: userProfile?.unit || '',
-  block: userProfile?.block || '',
-  residentId: currentUser.uid,
-  driverId: selectedDriver?.id, // Verificar este campo
-  condoId: userProfile?.condoId || 'temp_condo_id'
-};
+      // Preparar dados da solicitação
+      const requestData = {
+        driverName,
+        vehiclePlate: vehiclePlate.toUpperCase(),
+        vehicleModel,
+        comment,
+        type: 'driver',
+        unit: userProfile?.unit || '',
+        block: userProfile?.block || '',
+        residentId: currentUser.uid,
+        driverId: selectedDriver?.type === 'driver' ? selectedDriver.id : null,
+        condoId: userProfile?.condoId || 'temp_condo_id'
+      };
       
       // Criar solicitação de acesso
       await AccessService.createAccessRequest(requestData);
