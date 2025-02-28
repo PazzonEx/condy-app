@@ -45,34 +45,38 @@ const AutocompleteInput = ({
   const [touched, setTouched] = useState(false);
   
   // Efeito para filtrar dados quando o valor ou dados mudam
-  useEffect(() => {
-    if (value.length < minChars || !data.length) {
-      setFilteredData([]);
-      return;
-    }
-    
-    // Filtrar dados com base no valor
-    let filtered;
-    
-    if (filterFunction) {
-      // Usar função de filtro personalizada se fornecida
-      filtered = filterFunction(data, value);
-    } else {
-      // Filtro padrão
-      const query = value.toLowerCase();
-      filtered = data.filter(item => {
-        const text = String(item[textKey] || '').toLowerCase();
-        const subtext = subtextKey ? String(item[subtextKey] || '').toLowerCase() : '';
-        
-        return text.includes(query) || subtext.includes(query);
-      });
-    }
-    
-    // Limitar para evitar listas muito grandes
-    filtered = filtered.slice(0, 10);
-    
-    setFilteredData(filtered);
-  }, [value, data, textKey, subtextKey, minChars, filterFunction]);
+  // Efeito para filtrar dados quando o valor ou dados mudam
+useEffect(() => {
+  if (!value || value.length < minChars || !data || !Array.isArray(data) || !data.length) {
+    setFilteredData([]);
+    return;
+  }
+  
+  // Filtrar dados com base no valor
+  let filtered;
+  
+  if (filterFunction && typeof filterFunction === 'function') {
+    // Usar função de filtro personalizada se fornecida
+    filtered = filterFunction(data, value);
+  } else {
+    // Filtro padrão
+    const query = value.toLowerCase();
+    filtered = data.filter(item => {
+      // Verificar se o item e as propriedades existem
+      if (!item) return false;
+      
+      const text = item[textKey] ? String(item[textKey]).toLowerCase() : '';
+      const subtext = subtextKey && item[subtextKey] ? String(item[subtextKey]).toLowerCase() : '';
+      
+      return text.includes(query) || subtext.includes(query);
+    });
+  }
+  
+  // Limitar para evitar listas muito grandes
+  filtered = filtered.slice(0, 10);
+  
+  setFilteredData(filtered);
+}, [value, data, textKey, subtextKey, minChars, filterFunction]);
   
   // Mostrar dropdown quando o input recebe foco e há valor digitado
   const handleFocus = () => {
@@ -82,11 +86,16 @@ const AutocompleteInput = ({
     }
   };
   
-  // Manipular evento de alteração de texto
-  const handleTextChange = (text) => {
-    onChangeText(text);
-    setShowDropdown(text.length >= minChars);
-  };
+  // Adicionar verificações para evitar erros com valores undefined
+const handleTextChange = (text) => {
+  onChangeText(text);
+  // Só mostrar dropdown se tiver texto suficiente
+  if (text && text.length >= minChars) {
+    setShowDropdown(true);
+  } else {
+    setShowDropdown(false);
+  }
+};
   
   // Selecionar um item da lista
   const handleSelectItem = (item) => {

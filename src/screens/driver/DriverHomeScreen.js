@@ -3,7 +3,7 @@ import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity } f
 import { Text, useTheme, ActivityIndicator, Divider, Card as PaperCard, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-
+import FirestoreService from '../../services/firestore.service';
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
 
@@ -24,7 +24,7 @@ const DriverHomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
-
+  const [filteredRequests, setFilteredRequests] = useState([]);
   // Carregar solicitações quando a tela receber foco
   useFocusEffect(
     useCallback(() => {
@@ -32,33 +32,71 @@ const DriverHomeScreen = ({ navigation }) => {
     }, [filter])
   );
 
-  // Função para carregar solicitações
-  const loadRequests = async () => {
-    if (refreshing) return;
+  // Atualização para arquivo DriverHomeScreen.js
+
+// Modifique a função loadRequests para carregar detalhes adicionais
+const loadRequests = async () => {
+  if (refreshing) return;
+  
+  try {
+    setLoading(true);
+    setError(null);
     
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Definir condições baseadas no filtro
-      let status = null;
-      if (filter === 'active') {
-        status = ['pending', 'authorized', 'arrived']; // Status considerados "ativos"
-      } else if (filter === 'completed') {
-        status = ['completed', 'entered', 'denied', 'canceled']; // Status considerados "completados"
-      }
-      
-      // Buscar solicitações
-      const userRequests = await AccessService.getAccessRequests(status);
-      setRequests(userRequests);
-    } catch (error) {
-      console.error('Erro ao carregar solicitações:', error);
-      setError('Não foi possível carregar as solicitações');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    // Definir condições baseadas no filtro
+    let status = null;
+    if (filter === 'active') {
+      status = ['pending', 'authorized', 'arrived']; // Status considerados "ativos"
+    } else if (filter === 'completed') {
+      status = ['completed', 'entered', 'denied', 'canceled']; // Status considerados "completados"
     }
-  };
+    
+    // Buscar solicitações
+    const accessRequests = await AccessService.getAccessRequests(status);
+    
+    // Para cada solicitação, carregar informações do condomínio se não existirem
+    const requestsWithCondoInfo = await Promise.all(
+      accessRequests.map(async (request) => {
+        // Se já tiver as informações do condomínio, retornar como está
+        if (request.condo && request.condo.name) {
+          return request;
+        }
+        
+        // Se não tiver, buscar informações do condomínio
+        try {
+          if (request.condoId) {
+            const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
+            if (condoDoc) {
+              return {
+                ...request,
+                condo: condoDoc
+              };
+            }
+          }
+        } catch (condoError) {
+          console.warn(`Erro ao carregar condomínio para solicitação ${request.id}:`, condoError);
+        }
+        
+        // Se não conseguir carregar o condomínio, retornar com info padrão
+        return {
+          ...request,
+          condo: {
+            name: "Condomínio não especificado",
+            address: "Endereço não disponível"
+          }
+        };
+      })
+    );
+    
+    setRequests(requestsWithCondoInfo);
+    setFilteredRequests(requestsWithCondoInfo);
+  } catch (error) {
+    console.error('Erro ao carregar solicitações:', error);
+    setError('Não foi possível carregar as solicitações');
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
 
   // Função para atualizar a lista ao puxar para baixo
   const handleRefresh = () => {
@@ -153,12 +191,14 @@ const DriverHomeScreen = ({ navigation }) => {
             </View>
           </View>
           
+          {item.condo?.address && (
           <View style={styles.addressInfo}>
             <MaterialCommunityIcons name="map-marker" size={20} color="#555" style={styles.icon} />
             <Text style={styles.infoText}>
-              {item.condo?.address || 'Endereço não disponível'} 
+              {item.condo.address} 
             </Text>
           </View>
+        )}
           
           <View style={styles.unitInfo}>
             <MaterialCommunityIcons name="home" size={20} color="#555" style={styles.icon} />

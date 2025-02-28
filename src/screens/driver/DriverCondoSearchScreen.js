@@ -18,6 +18,7 @@ import {
   Button as PaperButton
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import FirestoreService from '../../services/firestore.service';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
@@ -41,6 +42,7 @@ const DriverCondoSearchScreen = ({ navigation }) => {
   const [condos, setCondos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedCondo, setSelectedCondo] = useState(null);
+  const [error, setError] = useState(null);
 
   // Estados para solicitação de acesso
   const [requestDetails, setRequestDetails] = useState({
@@ -49,88 +51,155 @@ const DriverCondoSearchScreen = ({ navigation }) => {
     comment: ''
   });
   const [requestLoading, setRequestLoading] = useState(false);
+  // Carregar alguns condomínios ao montar o componente
 
-  // Buscar condomínios
-  const searchCondos = async () => {
-    if (searchQuery.trim().length < 2) {
-      Alert.alert('Aviso', 'Digite pelo menos 2 caracteres para buscar');
-      return;
-    }
+  useEffect(() => {
+    const loadCondos = async () => {
+      try {
+        setLoading(true);
+        // Buscar todos os condomínios disponíveis
+        const availableCondos = await CondoSearchService.searchCondos({
+          onlyActive: true,
+          maxResults: 50
+        });
+        
+        console.log(`Carregados ${availableCondos.length} condomínios disponíveis`);
+        setCondos(availableCondos);
+        
+        // Log para depuração
+        if (availableCondos.length > 0) {
+          console.log('Exemplo de condomínio:', JSON.stringify(availableCondos[0]));
+        }
+      } catch (error) {
+        console.error('Erro ao carregar condomínios:', error);
+        Alert.alert('Erro', 'Não foi possível carregar a lista de condomínios.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadCondos();
+  }, []);
 
+  // Carregar condomínios iniciais
+  const loadInitialCondos = async () => {
     try {
       setLoading(true);
-      const results = await CondoSearchService.searchCondos({
-        query: searchQuery,
-        onlyActive: true,
-        maxResults: 20
-      });
+      setError(null);
       
-      setCondos(results);
+      // Buscar os primeiros 10 condomínios
+      const condosList = await FirestoreService.getCollection('condos');
       
-      if (results.length === 0) {
-        Alert.alert('Resultado', 'Nenhum condomínio encontrado');
+      // Limitar para os primeiros 10
+      const limitedCondos = condosList.slice(0, 10);
+      
+      setCondos(limitedCondos);
+      
+      if (limitedCondos.length === 0) {
+        setError('Nenhum condomínio encontrado. Tente buscar pelo nome.');
       }
     } catch (error) {
-      console.error('Erro na busca:', error);
-      Alert.alert('Erro', 'Não foi possível buscar condomínios');
+      console.error('Erro ao carregar condomínios:', error);
+      setError('Não foi possível carregar a lista de condomínios');
     } finally {
       setLoading(false);
     }
   };
 
-  // Enviar solicitação de acesso
-  const handleSubmitAccessRequest = async () => {
-    // Validações
-    if (!selectedCondo) {
-      Alert.alert('Erro', 'Selecione um condomínio');
-      return;
+// Atualizar a função searchCondos
+const searchCondos = async () => {
+  if (searchQuery.trim().length < 2) {
+    Alert.alert('Aviso', 'Digite pelo menos 2 caracteres para buscar');
+    return;
+  }
+
+  try {
+    setLoading(true);
+    console.log(`Buscando condomínios com a query: "${searchQuery}"`);
+    
+    const results = await CondoSearchService.searchCondos({
+      query: searchQuery,
+      onlyActive: true,
+      maxResults: 20
+    });
+    
+    console.log(`Encontrados ${results.length} condomínios`);
+    
+    // Adicionar log para verificar a estrutura dos resultados
+    if (results.length > 0) {
+      console.log('Exemplo de resultado:', JSON.stringify(results[0]));
     }
-
-    if (!requestDetails.unit.trim()) {
-      Alert.alert('Erro', 'Informe a unidade');
-      return;
+    
+    setCondos(results);
+    
+    if (results.length === 0) {
+      Alert.alert('Resultado', 'Nenhum condomínio encontrado');
     }
+  } catch (error) {
+    console.error('Erro na busca:', error);
+    Alert.alert('Erro', 'Não foi possível buscar condomínios');
+  } finally {
+    setLoading(false);
+  }
+};
 
-    try {
-      setRequestLoading(true);
-
-      const requestData = {
-        driverId: userProfile.uid,
-        driverName: userProfile.displayName,
-        vehiclePlate: userProfile.vehiclePlate || '',
-        vehicleModel: userProfile.vehicleModel || '',
-        condoId: selectedCondo.id,
-        unit: requestDetails.unit,
-        block: requestDetails.block,
-        comment: requestDetails.comment,
-        status: 'pending',
-        type: 'driver'
-      };
-
-      await AccessService.createAccessRequest(requestData);
-
-      Alert.alert(
-        'Sucesso', 
-        'Solicitação de acesso enviada para o condomínio!',
-        [{ 
-          text: 'OK', 
-          onPress: () => {
-            setSelectedCondo(null);
-            setRequestDetails({
-              unit: '',
-              block: '',
-              comment: ''
-            });
-          } 
-        }]
-      );
-    } catch (error) {
-      console.error('Erro ao criar solicitação:', error);
-      Alert.alert('Erro', 'Não foi possível enviar a solicitação');
-    } finally {
-      setRequestLoading(false);
-    }
-  };
+    // Enviar solicitação de acesso
+    const handleSubmitAccessRequest = async () => {
+      // Validações
+      if (!selectedCondo) {
+        Alert.alert('Erro', 'Selecione um condomínio');
+        return;
+      }
+  
+      if (!requestDetails.unit.trim()) {
+        Alert.alert('Erro', 'Informe a unidade');
+        return;
+      }
+  
+      try {
+        setRequestLoading(true);
+  
+        // Preparar dados da solicitação com informações claras do condomínio
+        const requestData = {
+          driverId: userProfile.uid,
+          driverName: userProfile.displayName,
+          vehiclePlate: userProfile.vehiclePlate || '',
+          vehicleModel: userProfile.vehicleModel || '',
+          condoId: selectedCondo.id,
+          condoName: selectedCondo.name, // Incluir nome do condomínio
+          condoAddress: selectedCondo.address, // Incluir endereço do condomínio
+          unit: requestDetails.unit,
+          block: requestDetails.block,
+          comment: requestDetails.comment,
+          status: 'pending',
+          type: 'driver'
+        };
+  
+        await AccessService.createAccessRequest(requestData);
+  
+        Alert.alert(
+          'Sucesso', 
+          `Solicitação de acesso enviada para o condomínio ${selectedCondo.name}!`,
+          [{ 
+            text: 'OK', 
+            onPress: () => {
+              setSelectedCondo(null);
+              setRequestDetails({
+                unit: '',
+                block: '',
+                comment: ''
+              });
+              navigation.navigate('Home'); // Retornar à tela principal
+            } 
+          }]
+        );
+      } catch (error) {
+        console.error('Erro ao criar solicitação:', error);
+        Alert.alert('Erro', 'Não foi possível enviar a solicitação');
+      } finally {
+        setRequestLoading(false);
+      }
+    };
 
   // Renderizar cartão de condomínio
   const renderCondoCard = (condo) => (

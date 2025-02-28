@@ -12,9 +12,9 @@ const AccessService = {
    * @returns {Promise<Object>} - Objeto com os dados da solicitação criada
    */
 
-// Modificação no método createAccessRequest em src/services/access.service.js
 
-// Atualizar o método createAccessRequest em src/services/access.service.js
+
+// Modificação em src/services/access.service.js - método createAccessRequest
 
 async createAccessRequest(requestData) {
   try {
@@ -24,30 +24,37 @@ async createAccessRequest(requestData) {
       throw new Error('Usuário não autenticado');
     }
     
-    // Verificar se os IDs necessários estão presentes
+    // Verificar se há um condoId válido
     if (!requestData.condoId) {
-      // Se não houver condoId, buscar automaticamente o condoId do morador
-      if (requestData.residentId || currentUser.uid) {
-        const residentId = requestData.residentId || currentUser.uid;
-        const residentDoc = await FirestoreService.getDocument('residents', residentId);
-        
-        if (residentDoc && residentDoc.condoId) {
-          requestData.condoId = residentDoc.condoId;
-        } else {
-          throw new Error('Não foi possível determinar o condomínio para esta solicitação');
+      throw new Error('É necessário especificar um condomínio para a solicitação');
+    }
+    
+    // Se não tiver informações do condomínio, buscar do banco de dados
+    if (!requestData.condoName || !requestData.condoAddress) {
+      try {
+        const condoDoc = await FirestoreService.getDocument('condos', requestData.condoId);
+        if (condoDoc) {
+          requestData.condoName = condoDoc.name;
+          requestData.condoAddress = condoDoc.address;
         }
+      } catch (error) {
+        console.warn('Erro ao buscar detalhes do condomínio:', error);
       }
     }
     
     // Adicionar campos comuns
     const data = {
       ...requestData,
-      residentId: requestData.residentId || currentUser.uid,
-      status: 'pending',
+      driverId: requestData.driverId || currentUser.uid,
       createdBy: currentUser.uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
+    
+    // Garantir que todas as informações importantes estejam presentes
+    if (!data.driverName && currentUser.displayName) {
+      data.driverName = currentUser.displayName;
+    }
     
     // Criar documento no Firestore
     const accessRequest = await FirestoreService.createDocument('access_requests', data);
@@ -233,34 +240,80 @@ async getAccessRequests(status = null, limit = null) {
    * @param {string} requestId - ID da solicitação
    * @returns {Promise<Object>} - Objeto com os dados da solicitação
    */
-  async getAccessRequestDetails(requestId) {
-    try {
-      // Obter documento da solicitação
-      const request = await FirestoreService.getDocument('access_requests', requestId);
-      
-      if (!request) {
-        throw new Error('Solicitação não encontrada');
-      }
-      
-      // Carregar dados relacionados
-      const [resident, driver, condo] = await Promise.all([
-        request.residentId ? FirestoreService.getDocument('residents', request.residentId) : null,
-        request.driverId ? FirestoreService.getDocument('drivers', request.driverId) : null,
-        request.condoId ? FirestoreService.getDocument('condos', request.condoId) : null
-      ]);
-      
-      // Retornar solicitação com dados relacionados
-      return {
-        ...request,
-        resident,
-        driver,
-        condo
-      };
-    } catch (error) {
-      console.error('Erro ao obter detalhes da solicitação:', error);
-      throw error;
+  // Modificação em src/services/access.service.js - método getAccessRequestDetails
+
+async getAccessRequestDetails(requestId) {
+  try {
+    // Obter documento da solicitação
+    const request = await FirestoreService.getDocument('access_requests', requestId);
+    
+    if (!request) {
+      throw new Error('Solicitação não encontrada');
     }
-  },
+    
+    // Carregar dados relacionados com tratamento de erro melhorado
+    let resident = null;
+    let driver = null;
+    let condo = null;
+    
+    // Carregar dados do residente
+    if (request.residentId) {
+      try {
+        resident = await FirestoreService.getDocument('residents', request.residentId);
+      } catch (err) {
+        console.warn(`Erro ao carregar dados do residente: ${err.message}`);
+      }
+    }
+    
+    // Carregar dados do motorista
+    if (request.driverId) {
+      try {
+        driver = await FirestoreService.getDocument('drivers', request.driverId);
+      } catch (err) {
+        console.warn(`Erro ao carregar dados do motorista: ${err.message}`);
+      }
+    }
+    
+    // Carregar dados do condomínio - com tratamento especial
+    if (request.condoId) {
+      try {
+        condo = await FirestoreService.getDocument('condos', request.condoId);
+        
+        // Verificar se o condomínio foi encontrado
+        if (!condo) {
+          console.warn(`Condomínio não encontrado para ID: ${request.condoId}`);
+          
+          // Criar objeto básico para evitar erro de renderização
+          condo = {
+            id: request.condoId,
+            name: request.condoName || 'Condomínio não encontrado',
+            address: request.condoAddress || 'Endereço não disponível'
+          };
+        }
+      } catch (err) {
+        console.warn(`Erro ao carregar dados do condomínio: ${err.message}`);
+        
+        // Criar objeto básico para evitar erro de renderização
+        condo = {
+          id: request.condoId,
+          name: 'Condomínio não encontrado',
+          address: 'Erro ao carregar dados'
+        };
+      }
+    }
+    
+    // Retornar solicitação com dados relacionados
+    return {
+      ...request,
+      resident,
+      driver,
+      condo
+    };
+  } catch (error) {
+    console.error('Erro ao obter detalhes da solicitação:', error);
+    throw error;
+  }
+},
   
   /**
  * Validar um QR code de acesso

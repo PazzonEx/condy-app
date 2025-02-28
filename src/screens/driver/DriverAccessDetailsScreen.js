@@ -168,20 +168,42 @@ const loadRequestDetails = async () => {
 };
   
   // Gerar QR Code para solicitação
-  const handleGenerateQRCode = async () => {
-    try {
-      setLoadingQR(true);
-      setError(null);
-      
-      const qrData = await AccessService.generateAccessQRCode(requestId);
-      setQrCodeData(qrData);
-    } catch (error) {
-      console.error('Erro ao gerar QR Code:', error);
-      Alert.alert('Erro', 'Não foi possível gerar o QR Code para esta solicitação');
-    } finally {
+ // Atualização para a função handleGenerateQRCode em DriverAccessDetailsScreen.js
+const handleGenerateQRCode = async () => {
+  try {
+    setLoadingQR(true);
+    setError(null);
+    
+    // Verificar se a solicitação está autorizada
+    if (requestDetails.status !== 'authorized') {
+      Alert.alert('Aviso', 'Esta solicitação não está autorizada. Aguarde a aprovação pela portaria.');
       setLoadingQR(false);
+      return;
     }
-  };
+    
+    // Usar o ID do motorista em vez do residente para gerar o QR code
+    const qrData = {
+      requestId: requestId,
+      driverId: userProfile.uid,
+      driverName: requestDetails.driverName || userProfile.displayName,
+      vehiclePlate: requestDetails.vehiclePlate,
+      vehicleModel: requestDetails.vehicleModel,
+      unit: requestDetails.unit,
+      block: requestDetails.block,
+      expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutos
+      generatedAt: Date.now()
+    };
+    
+    // Converter para string JSON
+    const jsonQrData = JSON.stringify(qrData);
+    setQrCodeData(jsonQrData);
+  } catch (error) {
+    console.error('Erro ao gerar QR Code:', error);
+    Alert.alert('Erro', 'Não foi possível gerar o QR Code para esta solicitação');
+  } finally {
+    setLoadingQR(false);
+  }
+};
   
   // Compartilhar QR Code
   const handleShareQRCode = async () => {
@@ -351,44 +373,44 @@ const loadRequestDetails = async () => {
       
       {/* Informações do Condomínio */}
       <Card style={styles.card}>
-        <Card.Title title="Condomínio" />
-        <Card.Content>
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="office-building" size={24} color="#555" style={styles.icon} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Nome</Text>
-              <Text style={styles.infoValue}>
-                {requestDetails.condo?.name || 'Não informado'}
-              </Text>
-            </View>
-          </View>
-          
-          <Divider style={styles.divider} />
-          
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="map-marker" size={24} color="#555" style={styles.icon} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Endereço</Text>
-              <Text style={styles.infoValue}>
-                {requestDetails.condo?.address || 'Não informado'}
-              </Text>
-            </View>
-          </View>
-          
-          <Divider style={styles.divider} />
-          
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="home" size={24} color="#555" style={styles.icon} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Unidade</Text>
-              <Text style={styles.infoValue}>
-                {requestDetails.unit || 'Não informada'}
-                {requestDetails.block ? ` • Bloco ${requestDetails.block}` : ''}
-              </Text>
-            </View>
-          </View>
-        </Card.Content>
-      </Card>
+  <Card.Title title="Condomínio" />
+  <Card.Content>
+    <View style={styles.infoRow}>
+      <MaterialCommunityIcons name="office-building" size={24} color="#555" style={styles.icon} />
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>Nome</Text>
+        <Text style={styles.infoValue}>
+          {requestDetails.condoName || requestDetails.condo?.name || 'Não informado'}
+        </Text>
+      </View>
+    </View>
+    
+    <Divider style={styles.divider} />
+    
+    <View style={styles.infoRow}>
+      <MaterialCommunityIcons name="map-marker" size={24} color="#555" style={styles.icon} />
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>Endereço</Text>
+        <Text style={styles.infoValue}>
+          {requestDetails.condoAddress || requestDetails.condo?.address || 'Não informado'}
+        </Text>
+      </View>
+    </View>
+    
+    <Divider style={styles.divider} />
+    
+    <View style={styles.infoRow}>
+      <MaterialCommunityIcons name="home" size={24} color="#555" style={styles.icon} />
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>Unidade</Text>
+        <Text style={styles.infoValue}>
+          {requestDetails.unit || 'Não informada'}
+          {requestDetails.block ? ` • Bloco ${requestDetails.block}` : ''}
+        </Text>
+      </View>
+    </View>
+  </Card.Content>
+</Card>
       
       {/* Informações do Morador */}
       <Card style={styles.card}>

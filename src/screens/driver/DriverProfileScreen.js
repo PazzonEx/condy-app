@@ -48,83 +48,76 @@ const DriverProfileScreen = ({ navigation }) => {
   
   // Carregar dados do motorista
   useEffect(() => {
-    const loadDriverData = async () => {
-      if (!userProfile) return;
+    // Correção para o arquivo DriverProfileScreen.js
+
+// Corrigir o tratamento de valores undefined em índices e arrays
+const loadDriverData = async () => {
+  if (!userProfile) return;
+  
+  try {
+    setLoading(true);
+    
+    // Buscar dados do motorista
+    const driverDoc = await FirestoreService.getDocument('drivers', userProfile.uid);
+    
+    if (driverDoc) {
+      setDriverData(driverDoc);
+      setPhotoURL(driverDoc.photoURL || null);
+      setVerificationStatus(driverDoc.verificationStatus || 'pending');
+      
+      // Preencher campos de edição com verificações de nulos
+      setName(driverDoc.name || userProfile.displayName || '');
+      setPhone(driverDoc.phone || '');
+      setVehicleModel(driverDoc.vehicleModel || '');
+      setVehiclePlate(driverDoc.vehiclePlate || '');
+      setVehicleColor(driverDoc.vehicleColor || '');
+      setVehicleYear(driverDoc.vehicleYear || '');
+      setServiceType(driverDoc.serviceType || '');
+      setIsAvailable(driverDoc.isAvailable !== false); // default para true
+    } else {
+      // Se o documento não existe, crie com dados iniciais
+      const initialData = {
+        name: userProfile.displayName || '',
+        email: userProfile.email || '',
+        status: 'active',
+        type: 'driver',
+        verificationStatus: 'pending',
+        isAvailable: true,
+        // Adicione campos vazios para evitar erros de undefined
+        phone: '',
+        vehicleModel: '',
+        vehiclePlate: '',
+        vehicleColor: '',
+        vehicleYear: '',
+        serviceType: ''
+      };
       
       try {
-        setLoading(true);
+        // Criar documento no Firestore
+        await FirestoreService.createDocumentWithId('drivers', userProfile.uid, initialData);
         
-        // Buscar dados do motorista
-        const driverDoc = await FirestoreService.getDocument('drivers', userProfile.uid);
-        
-        if (driverDoc) {
-          setDriverData(driverDoc);
-          setPhotoURL(driverDoc.photoURL);
-          setVerificationStatus(driverDoc.verificationStatus || 'pending');
-          
-          // Preencher campos de edição
-          setName(driverDoc.name || userProfile.displayName || '');
-          setPhone(driverDoc.phone || '');
-          setVehicleModel(driverDoc.vehicleModel || '');
-          setVehiclePlate(driverDoc.vehiclePlate || '');
-          setVehicleColor(driverDoc.vehicleColor || '');
-          setVehicleYear(driverDoc.vehicleYear || '');
-          setServiceType(driverDoc.serviceType || '');
-          setIsAvailable(driverDoc.isAvailable !== false);
-          
-          // Carregar estatísticas
-          try {
-            // Estatísticas básicas - em um app real, teríamos um serviço dedicado
-            const accessRequests = await FirestoreService.queryDocuments(
-              'access_requests',
-              [{ field: 'driverId', operator: '==', value: userProfile.uid }]
-            );
-            
-            if (accessRequests.length > 0) {
-              const completedTrips = accessRequests.filter(
-                r => r.status === 'completed' || r.status === 'entered'
-              ).length;
-              
-              const pendingRequests = accessRequests.filter(
-                r => r.status === 'pending' || r.status === 'authorized'
-              ).length;
-              
-              setStats({
-                totalTrips: accessRequests.length,
-                pendingRequests,
-                completedTrips,
-                rating: driverDoc.rating || 4.8 // Valor de exemplo, ou poderíamos calcular com base nos acessos
-              });
-            }
-          } catch (statsError) {
-            console.error('Erro ao carregar estatísticas:', statsError);
-          }
-        } else {
-          // Se o documento não existe, crie com dados iniciais
-          const initialData = {
-            name: userProfile.displayName || '',
-            email: userProfile.email || '',
-            status: 'active',
-            type: 'driver',
-            verificationStatus: 'pending',
-            isAvailable: true
-          };
-          
-          // Criar documento no Firestore
-          await FirestoreService.createDocumentWithId('drivers', userProfile.uid, initialData);
-          
-          // Atualizar estado local
-          setDriverData(initialData);
-          setName(initialData.name);
-          setVerificationStatus('pending');
-        }
-      } catch (error) {
-        console.error('Erro ao carregar dados do motorista:', error);
-        Alert.alert('Erro', 'Não foi possível carregar seus dados. Tente novamente mais tarde.');
-      } finally {
-        setLoading(false);
+        // Atualizar estado local
+        setDriverData(initialData);
+        setName(initialData.name);
+        setVerificationStatus('pending');
+      } catch (innerError) {
+        console.error('Erro ao criar documento de motorista:', innerError);
+        // Mesmo com erro, definir estados básicos para evitar erros de renderização
+        setDriverData({});
+        setName(userProfile.displayName || '');
       }
-    };
+    }
+  } catch (error) {
+    console.error('Erro ao carregar dados do motorista:', error);
+    Alert.alert('Erro', 'Não foi possível carregar seus dados. Tente novamente mais tarde.');
+    
+    // Mesmo com erro, definir estados básicos para evitar erros de renderização
+    setDriverData({});
+    setName(userProfile.displayName || '');
+  } finally {
+    setLoading(false);
+  }
+};
     
     loadDriverData();
   }, [userProfile]);
