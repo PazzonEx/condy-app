@@ -24,6 +24,40 @@ async createAccessRequest(requestData) {
       throw new Error('Usuário não autenticado');
     }
     
+    // Se não tiver um driverId explícito, mas tiver driverName, usar essa informação
+    if (!requestData.driverId && requestData.driverName) {
+      // Buscar motorista por nome
+      try {
+        const drivers = await FirestoreService.queryDocuments('drivers', [
+          { field: 'name', operator: '==', value: requestData.driverName }
+        ]);
+        
+        if (drivers.length > 0) {
+          requestData.driverId = drivers[0].id;
+          console.log(`Encontrado motorista pelo nome: ${drivers[0].id}`);
+        }
+      } catch (error) {
+        console.warn('Erro ao buscar motorista por nome:', error);
+      }
+    }
+    
+    // Garantir que o driverName está presente
+    if (!requestData.driverName && currentUser.displayName) {
+      requestData.driverName = currentUser.displayName;
+    }
+    
+    // Resto do código...
+  } catch (error) {
+    console.error('Erro ao criar solicitação de acesso:', error);
+    throw error;
+  }
+  try {
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
+    
     // Verificar se há um condoId válido
     if (!requestData.condoId) {
       throw new Error('É necessário especificar um condomínio para a solicitação');
@@ -240,80 +274,44 @@ async getAccessRequests(status = null, limit = null) {
    * @param {string} requestId - ID da solicitação
    * @returns {Promise<Object>} - Objeto com os dados da solicitação
    */
-  // Modificação em src/services/access.service.js - método getAccessRequestDetails
-
-async getAccessRequestDetails(requestId) {
-  try {
-    // Obter documento da solicitação
-    const request = await FirestoreService.getDocument('access_requests', requestId);
-    
-    if (!request) {
-      throw new Error('Solicitação não encontrada');
-    }
-    
-    // Carregar dados relacionados com tratamento de erro melhorado
-    let resident = null;
-    let driver = null;
-    let condo = null;
-    
-    // Carregar dados do residente
-    if (request.residentId) {
-      try {
-        resident = await FirestoreService.getDocument('residents', request.residentId);
-      } catch (err) {
-        console.warn(`Erro ao carregar dados do residente: ${err.message}`);
+  async getAccessRequestDetails(requestId) {
+    try {
+      // Obter documento da solicitação
+      const request = await FirestoreService.getDocument('access_requests', requestId);
+      
+      if (!request) {
+        throw new Error('Solicitação não encontrada');
       }
-    }
-    
-    // Carregar dados do motorista
-    if (request.driverId) {
-      try {
-        driver = await FirestoreService.getDocument('drivers', request.driverId);
-      } catch (err) {
-        console.warn(`Erro ao carregar dados do motorista: ${err.message}`);
-      }
-    }
-    
-    // Carregar dados do condomínio - com tratamento especial
-    if (request.condoId) {
-      try {
-        condo = await FirestoreService.getDocument('condos', request.condoId);
-        
-        // Verificar se o condomínio foi encontrado
-        if (!condo) {
-          console.warn(`Condomínio não encontrado para ID: ${request.condoId}`);
-          
-          // Criar objeto básico para evitar erro de renderização
-          condo = {
-            id: request.condoId,
-            name: request.condoName || 'Condomínio não encontrado',
-            address: request.condoAddress || 'Endereço não disponível'
-          };
+      
+      // Carregar dados relacionados com tratamento de erro melhorado
+      let resident = null;
+      let driver = null;
+      let condo = null;
+      
+      // Carregar dados do motorista
+      if (request.driverId) {
+        try {
+          driver = await FirestoreService.getDocument('drivers', request.driverId);
+          console.log("Driver encontrado:", driver); // Adicione este log
+        } catch (err) {
+          console.warn(`Erro ao carregar dados do motorista: ${err.message}`);
         }
-      } catch (err) {
-        console.warn(`Erro ao carregar dados do condomínio: ${err.message}`);
-        
-        // Criar objeto básico para evitar erro de renderização
-        condo = {
-          id: request.condoId,
-          name: 'Condomínio não encontrado',
-          address: 'Erro ao carregar dados'
-        };
+      } else {
+        console.warn("ID do motorista não encontrado na solicitação");
       }
+      
+      // Retornar solicitação com dados relacionados
+      return {
+        ...request,
+        resident,
+        driver,
+        condo
+      };
+    } catch (error) {
+      console.error('Erro ao obter detalhes da solicitação:', error);
+      throw error;
     }
-    
-    // Retornar solicitação com dados relacionados
-    return {
-      ...request,
-      resident,
-      driver,
-      condo
-    };
-  } catch (error) {
-    console.error('Erro ao obter detalhes da solicitação:', error);
-    throw error;
-  }
-},
+  },
   
   /**
  * Validar um QR code de acesso

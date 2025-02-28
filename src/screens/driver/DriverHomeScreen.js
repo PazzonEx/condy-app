@@ -3,7 +3,7 @@ import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity } f
 import { Text, useTheme, ActivityIndicator, Divider, Card as PaperCard, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import FirestoreService from '../../services/firestore.service';
+
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
 
@@ -12,6 +12,7 @@ import Button from '../../components/Button';
 
 // Serviços
 import AccessService from '../../services/access.service';
+import FirestoreService from '../../services/firestore.service';
 
 // Utilitários
 import { formatDate } from '../../utils/format';
@@ -25,6 +26,7 @@ const DriverHomeScreen = ({ navigation }) => {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
   const [filteredRequests, setFilteredRequests] = useState([]);
+
   // Carregar solicitações quando a tela receber foco
   useFocusEffect(
     useCallback(() => {
@@ -32,71 +34,71 @@ const DriverHomeScreen = ({ navigation }) => {
     }, [filter])
   );
 
-  // Atualização para arquivo DriverHomeScreen.js
-
-// Modifique a função loadRequests para carregar detalhes adicionais
-const loadRequests = async () => {
-  if (refreshing) return;
-  
-  try {
-    setLoading(true);
-    setError(null);
+  // Função para carregar solicitações
+  const loadRequests = async () => {
+    if (refreshing) return;
     
-    // Definir condições baseadas no filtro
-    let status = null;
-    if (filter === 'active') {
-      status = ['pending', 'authorized', 'arrived']; // Status considerados "ativos"
-    } else if (filter === 'completed') {
-      status = ['completed', 'entered', 'denied', 'canceled']; // Status considerados "completados"
-    }
-    
-    // Buscar solicitações
-    const accessRequests = await AccessService.getAccessRequests(status);
-    
-    // Para cada solicitação, carregar informações do condomínio se não existirem
-    const requestsWithCondoInfo = await Promise.all(
-      accessRequests.map(async (request) => {
-        // Se já tiver as informações do condomínio, retornar como está
-        if (request.condo && request.condo.name) {
-          return request;
-        }
-        
-        // Se não tiver, buscar informações do condomínio
-        try {
-          if (request.condoId) {
-            const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
-            if (condoDoc) {
-              return {
-                ...request,
-                condo: condoDoc
-              };
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Definir condições baseadas no filtro
+      let status = null;
+      if (filter === 'active') {
+        status = ['pending', 'authorized', 'arrived']; // Status considerados "ativos"
+      } else if (filter === 'completed') {
+        status = ['completed', 'entered', 'denied', 'canceled']; // Status considerados "completados"
+      }
+      
+      // Buscar solicitações
+      const accessRequests = await AccessService.getAccessRequests(status);
+      console.log('Solicitações carregadas:', accessRequests.length);
+      console.log('Dados da primeira solicitação:', accessRequests.length > 0 ? JSON.stringify(accessRequests[0]) : 'Nenhuma');
+      
+      // Para cada solicitação, carregar informações do condomínio se não existirem
+      const requestsWithCondoInfo = await Promise.all(
+        accessRequests.map(async (request) => {
+          // Se já tiver as informações do condomínio, retornar como está
+          if (request.condo && request.condo.name) {
+            return request;
+          }
+          
+          // Se não tiver, buscar informações do condomínio
+          try {
+            if (request.condoId) {
+              const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
+              if (condoDoc) {
+                return {
+                  ...request,
+                  condo: condoDoc
+                };
+              }
             }
+          } catch (condoError) {
+            console.warn(`Erro ao carregar condomínio para solicitação ${request.id}:`, condoError);
           }
-        } catch (condoError) {
-          console.warn(`Erro ao carregar condomínio para solicitação ${request.id}:`, condoError);
-        }
-        
-        // Se não conseguir carregar o condomínio, retornar com info padrão
-        return {
-          ...request,
-          condo: {
-            name: "Condomínio não especificado",
-            address: "Endereço não disponível"
-          }
-        };
-      })
-    );
-    
-    setRequests(requestsWithCondoInfo);
-    setFilteredRequests(requestsWithCondoInfo);
-  } catch (error) {
-    console.error('Erro ao carregar solicitações:', error);
-    setError('Não foi possível carregar as solicitações');
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+          
+          // Se não conseguir carregar o condomínio, retornar com info padrão
+          return {
+            ...request,
+            condo: {
+              name: request.condoName || "Condomínio não especificado",
+              address: request.condoAddress || "Endereço não disponível"
+            }
+          };
+        })
+      );
+      
+      setRequests(requestsWithCondoInfo);
+      setFilteredRequests(requestsWithCondoInfo);
+    } catch (error) {
+      console.error('Erro ao carregar solicitações:', error);
+      setError('Não foi possível carregar as solicitações');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   // Função para atualizar a lista ao puxar para baixo
   const handleRefresh = () => {
@@ -186,19 +188,19 @@ const loadRequests = async () => {
           <View style={styles.condoInfo}>
             <MaterialCommunityIcons name="office-building" size={24} color="#555" style={styles.icon} />
             <View style={styles.condoDetails}>
-              <Text style={styles.condoName}>{item.condo?.name || 'Condomínio não especificado'}</Text>
+              <Text style={styles.condoName}>{item.condo?.name || item.condoName || 'Condomínio não especificado'}</Text>
               <Text style={styles.infoText}>{status.description}</Text>
             </View>
           </View>
           
-          {item.condo?.address && (
-          <View style={styles.addressInfo}>
-            <MaterialCommunityIcons name="map-marker" size={20} color="#555" style={styles.icon} />
-            <Text style={styles.infoText}>
-              {item.condo.address} 
-            </Text>
-          </View>
-        )}
+          {(item.condo?.address || item.condoAddress) && (
+            <View style={styles.addressInfo}>
+              <MaterialCommunityIcons name="map-marker" size={20} color="#555" style={styles.icon} />
+              <Text style={styles.infoText}>
+                {item.condo?.address || item.condoAddress}
+              </Text>
+            </View>
+          )}
           
           <View style={styles.unitInfo}>
             <MaterialCommunityIcons name="home" size={20} color="#555" style={styles.icon} />
@@ -222,7 +224,7 @@ const loadRequests = async () => {
               mode="contained" 
               icon="qrcode"
               onPress={() => navigation.navigate('DriverAccessDetails', { requestId: item.id, showQR: true })}
-              style={{ marginLeft: 8, backgroundColor: theme.colors.primary }}
+              style={[styles.qrButton, { backgroundColor: theme.colors.primary }]}
             >
               Mostrar QR Code
             </Button>
@@ -333,7 +335,7 @@ const loadRequests = async () => {
         </View>
       ) : (
         <FlatList
-          data={requests}
+          data={filteredRequests}
           renderItem={renderRequestItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
@@ -464,7 +466,11 @@ const styles = StyleSheet.create({
   cardActions: {
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  qrButton: {
+    borderRadius: 4,
   },
   loadingContainer: {
     flex: 1,
