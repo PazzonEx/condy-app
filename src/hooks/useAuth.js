@@ -30,6 +30,7 @@ export function AuthProvider({ children }) {
           setError(err.message);
         }
       } else {
+        console.log("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOPORAAAAAAAAAAAAAA")
         setUserProfile(null);
       }
       

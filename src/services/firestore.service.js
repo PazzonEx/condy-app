@@ -43,9 +43,23 @@ import {
     // Criar documento com ID específico
     async createDocumentWithId(collectionName, docId, data) {
       try {
+        if (!docId) {
+          throw new Error('ID do documento não fornecido');
+        }
+        
+        // Sanitizar dados antes de enviar para o Firestore
+        const sanitizedData = {};
+        
+        // Remover campos undefined ou null e validar valores
+        Object.keys(data).forEach(key => {
+          if (data[key] !== undefined && data[key] !== null) {
+            sanitizedData[key] = data[key];
+          }
+        });
+        
         // Adiciona timestamp de criação e atualização
         const docData = {
-          ...data,
+          ...sanitizedData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         };
@@ -62,7 +76,7 @@ import {
     // Obter documento por ID
     async getDocument(collectionName, docId) {
       try {
-        if (!docId) {
+        if (!docId) { 
           console.warn(`ID de documento não fornecido para obter documento em ${collectionName}`);
           return null;
         }

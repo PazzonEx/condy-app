@@ -58,8 +58,8 @@ const loadDriverData = async () => {
     setLoading(true);
     
     // Buscar dados do motorista
-    const driverDoc = await FirestoreService.getDocument('drivers', userProfile.uid);
-    
+    const driverDoc = await FirestoreService.getDocument('drivers', userProfile.id);
+    console.log("OOOOOOOOOOOOOOOOOOlhAAAAAAAAAAAAAAAAA"+JSON.stringify(driverDoc))
     if (driverDoc) {
       setDriverData(driverDoc);
       setPhotoURL(driverDoc.photoURL || null);
@@ -75,6 +75,7 @@ const loadDriverData = async () => {
       setServiceType(driverDoc.serviceType || '');
       setIsAvailable(driverDoc.isAvailable !== false); // default para true
     } else {
+      console.log("OOOOOOOOOOOOOOOOOOlhAAAAAAAAAAAAAAAAA"+JSON.stringify( userProfile))
       // Se o documento não existe, crie com dados iniciais
       const initialData = {
         name: userProfile.displayName || '',
@@ -94,7 +95,7 @@ const loadDriverData = async () => {
       
       try {
         // Criar documento no Firestore
-        await FirestoreService.createDocumentWithId('drivers', userProfile.uid, initialData);
+        await FirestoreService.createDocumentWithId('drivers', userProfile.id, initialData);
         
         // Atualizar estado local
         setDriverData(initialData);
@@ -128,7 +129,7 @@ const loadDriverData = async () => {
       const newAvailability = !isAvailable;
       
       // Atualizar no Firestore
-      await FirestoreService.updateDocument('drivers', userProfile.uid, {
+      await FirestoreService.updateDocument('drivers', userProfile.id, {
         isAvailable: newAvailability
       });
       
@@ -171,7 +172,7 @@ const loadDriverData = async () => {
         // Fazer upload da imagem
         const uri = result.assets[0].uri;
         const filename = uri.split('/').pop();
-        const path = `profile_photos/${userProfile.uid}/${filename}`;
+        const path = `profile_photos/${userProfile.id}/${filename}`;
         
         const uploadResult = await StorageService.uploadFile(path, uri);
         
@@ -179,7 +180,7 @@ const loadDriverData = async () => {
         setPhotoURL(uploadResult.url);
         
         // Atualizar documento no Firestore
-        await FirestoreService.updateDocument('drivers', userProfile.uid, {
+        await FirestoreService.updateDocument('drivers', userProfile.id, {
           photoURL: uploadResult.url
         });
         
@@ -252,7 +253,7 @@ const loadDriverData = async () => {
       };
       
       // Atualizar dados no Firestore
-      await FirestoreService.updateDocument('drivers', userProfile.uid, updatedData);
+      await FirestoreService.updateDocument('drivers', userProfile.id, updatedData);
       
       // Atualizar displayName no Auth se necessário
       if (name !== userProfile.displayName) {

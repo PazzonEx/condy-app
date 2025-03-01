@@ -41,7 +41,7 @@ const CondoProfileScreen = ({ navigation }) => {
         setLoading(true);
         
         // Buscar dados do condomínio
-        const condoDoc = await FirestoreService.getDocument('condos', userProfile.uid);
+        const condoDoc = await FirestoreService.getDocument('condos', userProfile.id);
         
         if (condoDoc) {
           setCondoData(condoDoc);
@@ -63,7 +63,7 @@ const CondoProfileScreen = ({ navigation }) => {
           };
           
           // Criar documento no Firestore
-          await FirestoreService.createDocumentWithId('condos', userProfile.uid, initialData);
+          await FirestoreService.createDocumentWithId('condos', userProfile.id, initialData);
           
           // Atualizar estado local
           setCondoData(initialData);
@@ -105,7 +105,7 @@ const CondoProfileScreen = ({ navigation }) => {
         // Fazer upload da imagem
         const uri = result.assets[0].uri;
         const filename = uri.split('/').pop();
-        const path = `condo_photos/${userProfile.uid}/${filename}`;
+        const path = `condo_photos/${userProfile.id}/${filename}`;
         
         const uploadResult = await StorageService.uploadFile(path, uri);
         
@@ -113,7 +113,7 @@ const CondoProfileScreen = ({ navigation }) => {
         setPhotoURL(uploadResult.url);
         
         // Atualizar documento no Firestore
-        await FirestoreService.updateDocument('condos', userProfile.uid, {
+        await FirestoreService.updateDocument('condos', userProfile.id, {
           photoURL: uploadResult.url
         });
         
@@ -155,7 +155,7 @@ const CondoProfileScreen = ({ navigation }) => {
       };
       
       // Atualizar dados no Firestore
-      await FirestoreService.updateDocument('condos', userProfile.uid, updatedData);
+      await FirestoreService.updateDocument('condos', userProfile.id, updatedData);
       
       // Atualizar displayName no Auth se necessário
       if (name !== userProfile.displayName) {

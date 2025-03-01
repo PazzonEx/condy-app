@@ -162,51 +162,43 @@ export const isValidEmail = (email) => {
    */
   export const isValidCNPJ = (cnpj) => {
     // Remover caracteres não numéricos
-    cnpj = cnpj.replace(/\D/g, '');
+    const cleaned = cnpj.replace(/\D/g, '');
     
     // Verificar se tem 14 dígitos
-    if (cnpj.length !== 14) {
+    if (cleaned.length !== 14) {
       return false;
     }
     
     // Verificar se todos os dígitos são iguais (caso inválido)
-    if (/^(\d)\1+$/.test(cnpj)) {
+    if (/^(\d)\1+$/.test(cleaned)) {
       return false;
     }
     
-    // Validação dos dígitos verificadores
-    let size = cnpj.length - 2;
-    let numbers = cnpj.substring(0, size);
-    const digits = cnpj.substring(size);
+    // Tabela de multiplicadores para o cálculo dos dígitos verificadores
+    const multiplier1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const multiplier2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    
+    // Cálculo do primeiro dígito verificador
     let sum = 0;
-    let pos = size - 7;
-    
-    // Primeiro dígito
-    for (let i = size; i >= 1; i--) {
-      sum += parseInt(numbers.charAt(size - i)) * pos--;
-      if (pos < 2) pos = 9;
+    for (let i = 0; i < 12; i++) {
+      sum += parseInt(cleaned.charAt(i)) * multiplier1[i];
     }
     
-    let result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-    if (result !== parseInt(digits.charAt(0))) {
-      return false;
-    }
+    let remainder = sum % 11;
+    const digit1 = remainder < 2 ? 0 : 11 - remainder;
     
-    // Segundo dígito
-    size += 1;
-    numbers = cnpj.substring(0, size);
+    // Cálculo do segundo dígito verificador
     sum = 0;
-    pos = size - 7;
-    
-    for (let i = size; i >= 1; i--) {
-      sum += parseInt(numbers.charAt(size - i)) * pos--;
-      if (pos < 2) pos = 9;
+    for (let i = 0; i < 13; i++) {
+      sum += parseInt(cleaned.charAt(i)) * multiplier2[i];
     }
     
-    result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-    if (result !== parseInt(digits.charAt(1))) {
-      return false;
-    }
+    remainder = sum % 11;
+    const digit2 = remainder < 2 ? 0 : 11 - remainder;
     
-    return true;
+    // Verificar se os dígitos calculados são iguais aos dígitos informados
+    return (
+      parseInt(cleaned.charAt(12)) === digit1 && 
+      parseInt(cleaned.charAt(13)) === digit2
+    );
   };

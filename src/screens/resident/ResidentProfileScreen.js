@@ -45,8 +45,9 @@ const ResidentProfileScreen = ({ navigation }) => {
         setLoading(true);
         
         // Buscar dados do residente
-        const residentDoc = await FirestoreService.getDocument('residents', userProfile.uid);
-        
+        const residentDoc = await FirestoreService.getDocument('residents', userProfile.id);
+        console.log('doc resident:', residentDoc);
+     
         if (residentDoc) {
           setResidentData(residentDoc);
           setPhotoURL(residentDoc.photoURL);
@@ -75,7 +76,7 @@ const ResidentProfileScreen = ({ navigation }) => {
           };
           
           // Criar documento no Firestore
-          await FirestoreService.createDocumentWithId('residents', userProfile.uid, initialData);
+          await FirestoreService.createDocumentWithId('residents', userProfile.id, initialData);
           
           // Atualizar estado local
           setResidentData(initialData);
@@ -138,7 +139,7 @@ const ResidentProfileScreen = ({ navigation }) => {
         // Fazer upload da imagem
         const uri = result.assets[0].uri;
         const filename = uri.split('/').pop();
-        const path = `profile_photos/${userProfile.uid}/${filename}`;
+        const path = `profile_photos/${userProfile.id}/${filename}`;
         
         const uploadResult = await StorageService.uploadFile(path, uri);
         
@@ -146,7 +147,7 @@ const ResidentProfileScreen = ({ navigation }) => {
         setPhotoURL(uploadResult.url);
         
         // Atualizar documento no Firestore
-        await FirestoreService.updateDocument('residents', userProfile.uid, {
+        await FirestoreService.updateDocument('residents', userProfile.id, {
           photoURL: uploadResult.url
         });
         
@@ -182,7 +183,7 @@ const ResidentProfileScreen = ({ navigation }) => {
       };
       
       // Atualizar dados no Firestore
-      await FirestoreService.updateDocument('residents', userProfile.uid, updatedData);
+      await FirestoreService.updateDocument('residents', userProfile.id, updatedData);
       
       // Atualizar displayName no Auth se necessário
       if (name !== userProfile.displayName) {
