@@ -18,7 +18,7 @@ import { formatDate } from '../../utils/format';
 
 const CondoHomeScreen = ({ navigation }) => {
   const theme = useTheme();
-  const { userProfile } = useAuth();
+  const { userProfile, currentUser } = useAuth();
   const [requests, setRequests] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +53,7 @@ const CondoHomeScreen = ({ navigation }) => {
 
   // Função para carregar solicitações
   const loadRequests = async () => {
+
     if (refreshing) return;
     
     try {
@@ -61,13 +62,25 @@ const CondoHomeScreen = ({ navigation }) => {
       
       // Definir condições baseadas no filtro
       let status = null;
-      if (filter === 'pending') {
-        status = ['pending'];
-      } else if (filter === 'authorized') {
-        status = ['authorized', 'arrived'];
-      } else if (filter === 'completed') {
-        status = ['completed', 'entered', 'denied', 'canceled'];
-      }
+if (filter === 'pending') {
+  status = ['pending']; // Apenas solicitações já aprovadas pelo morador e aguardando a portaria
+} else if (filter === 'authorized') {
+  status = ['authorized', 'arrived'];
+} else if (filter === 'completed') {
+  status = ['completed', 'entered', 'denied', 'canceled'];
+}
+
+// Excluir especificamente solicitações que ainda aguardam o morador
+const conditions = [
+  { field: 'condoId', operator: '==', value: currentUser.uid }
+];
+
+if (status) {
+  conditions.push({ field: 'status', operator: 'in', value: status });
+} else {
+  // Se for "all", ainda excluir explicitamente "pending_resident"
+  conditions.push({ field: 'status', operator: '!=', value: 'pending_resident' });
+}
       
       // Buscar solicitações
       const accessRequests = await AccessService.getAccessRequests(status);
@@ -154,6 +167,12 @@ const CondoHomeScreen = ({ navigation }) => {
         label: 'Pendente',
         color: theme.colors.accent,
         icon: 'clock-outline',
+      },
+      pending_resident: {
+        label: 'Aguardando Morador',
+        color: '#FF9800', // Laranja
+        icon: 'account-clock',
+        description: 'Aguardando aprovação do morador'
       },
       authorized: {
         label: 'Autorizado',

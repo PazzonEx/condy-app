@@ -58,13 +58,13 @@ const CondoResidentsScreen = ({ navigation }) => {
       setLoading(true);
       // Buscar moradores do condomínio atual
       const condoResidents = await FirestoreService.queryDocuments('residents', [
-        { field: 'condoId', operator: '==', value: userProfile.uid }
+        { field: 'condoId', operator: '==', value: userProfile.id }
       ]);
       
       setResidents(condoResidents);
     } catch (error) {
       console.error('Erro ao carregar moradores:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os moradores');
+      
     } finally {
       setLoading(false);
     }
@@ -106,7 +106,7 @@ const CondoResidentsScreen = ({ navigation }) => {
         unit,
         block,
         phone,
-        condoId: userProfile.uid,
+        condoId: userProfile.id,
         status: 'active',
         type: 'resident'
       });

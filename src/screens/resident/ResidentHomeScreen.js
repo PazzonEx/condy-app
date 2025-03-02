@@ -24,6 +24,7 @@ const ResidentHomeScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
 
   // Carregar solicitações quando a tela receber foco
@@ -33,86 +34,117 @@ const ResidentHomeScreen = ({ navigation }) => {
     }, [filter])
   );
   // Em ResidentHomeScreen.js - Adicionar filtragem para solicitações pendentes de aprovação
-useEffect(() => {
-  // Filtrar solicitações pendentes de aprovação do morador
-  const pendingApprovalRequests = requests.filter(
-    req => req.status === 'pending_resident' && req.flowType === 'driver_initiated'
-  );
-  
-  // Se houver solicitações pendentes, mostrar indicador ou notificação
-  if (pendingApprovalRequests.length > 0) {
-    // Atualizar badge ou contador
-    //setBadgeCount(pendingApprovalRequests.length);
-  }
-}, [requests]);
-
+  useEffect(() => {
+    const checkPendingRequests = async () => {
+      try {
+        const conditions = [
+          { field: 'residentId', operator: '==', value: userProfile.id },
+          { field: 'status', operator: '==', value: 'pending_resident' }
+        ];
+        
+        const pendingRequests = await FirestoreService.queryDocuments(
+          'access_requests', 
+          conditions
+        );
+        
+        setPendingCount(pendingRequests.length);
+      } catch (error) {
+        console.error('Erro ao verificar solicitações pendentes:', error);
+      }
+    };
+    
+    if (userProfile?.id) {
+      checkPendingRequests();
+    }
+  }, [userProfile]);
 // Função para aprovar solicitação de acesso
 const handleApproveRequest = async (requestId) => {
   try {
     setLoading(true);
     
-    // Atualizar status da solicitação
-    await AccessService.updateAccessRequestStatus(requestId, 'pending');
+    // Atualizar o status para "pending" (aguardando aprovação da portaria)
+    await AccessService.updateAccessRequestStatus(requestId, 'pending', {
+      residentApproved: true,
+      residentApprovedAt: new Date()
+    });
     
-    Alert.alert('Sucesso', 'Solicitação de acesso aprovada. A portaria será notificada.');
+    Alert.alert('Sucesso', 'Solicitação aprovada. A portaria será notificada.');
     
-    // Recarregar lista
+    // Recarregar solicitações
     loadRequests();
   } catch (error) {
     console.error('Erro ao aprovar solicitação:', error);
     Alert.alert('Erro', 'Não foi possível aprovar a solicitação');
-  } finally {
     setLoading(false);
   }
 };
 
-// Função para recusar solicitação de acesso
+
 const handleRejectRequest = async (requestId) => {
   try {
     setLoading(true);
     
-    // Atualizar status da solicitação
-    await AccessService.updateAccessRequestStatus(requestId, 'denied');
+    // Atualizar o status para "denied"
+    await AccessService.updateAccessRequestStatus(requestId, 'denied', {
+      residentApproved: false,
+      residentDeniedAt: new Date()
+    });
     
-    Alert.alert('Sucesso', 'Solicitação de acesso foi negada.');
+    Alert.alert('Sucesso', 'Solicitação rejeitada.');
     
-    // Recarregar lista
+    // Recarregar solicitações
     loadRequests();
   } catch (error) {
-    console.error('Erro ao recusar solicitação:', error);
-    Alert.alert('Erro', 'Não foi possível recusar a solicitação');
-  } finally {
+    console.error('Erro ao rejeitar solicitação:', error);
+    Alert.alert('Erro', 'Não foi possível rejeitar a solicitação');
     setLoading(false);
   }
 };
 
-  // Função para carregar solicitações
-  const loadRequests = async () => {
-    if (refreshing) return;
+ // No método loadRequests de ResidentHomeScreen.js
+const loadRequests = async () => {
+  try {
+    setLoading(true);
+    setError(null);
     
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Definir condições baseadas no filtro
-      let status = null;
-      if (filter === 'active') {
-        status = ['pending', 'authorized', 'arrived']; // Status considerados "ativos"
-      } else if (filter === 'completed') {
-        status = ['completed', 'canceled', 'denied']; // Status considerados "completados"
-      }
-      
-      // Buscar solicitações
-      const userRequests = await AccessService.getAccessRequests(status);
-      setRequests(userRequests);
-    } catch (error) {
-      console.error('Erro ao carregar solicitações:', error);
-      setError('Não foi possível carregar as solicitações');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    // Buscar solicitações de acesso do morador
+    const conditions = [
+      { field: 'residentId', operator: '==', value: userProfile.id }
+    ];
+    
+    // Adicionar status se filtro ativo
+    if (filter === 'active') {
+      conditions.push({ 
+        field: 'status', 
+        operator: 'in', 
+        value: ['pending', 'pending_resident', 'authorized', 'arrived'] 
+      });
+    } else if (filter === 'completed') {
+      conditions.push({ 
+        field: 'status', 
+        operator: 'in', 
+        value: ['completed', 'entered', 'denied', 'canceled'] 
+      });
     }
-  };
+    
+    // Buscar todas as solicitações que correspondem ao morador
+    const requestsData = await FirestoreService.queryDocuments(
+      'access_requests', 
+      conditions,
+      { field: 'createdAt', direction: 'desc' }
+    );
+    
+    console.log(`Encontradas ${requestsData.length} solicitações para o morador`);
+    
+    setRequests(requestsData);
+  } catch (error) {
+    console.error('Erro ao carregar solicitações:', error);
+    setError('Não foi possível carregar as solicitações');
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
 
   // Função para atualizar a lista ao puxar para baixo
   const handleRefresh = () => {
@@ -156,6 +188,12 @@ const handleRejectRequest = async (requestId) => {
         color: theme.colors.accent,
         icon: 'clock-outline',
         description: 'Aguardando aprovação'
+      },
+      pending_resident: {
+        label: 'Aprovação Pendente',
+        color: '#FF9800', // Laranja
+        icon: 'account-clock',
+        description: 'Requer sua aprovação'
       },
       authorized: {
         label: 'Autorizado',
@@ -208,63 +246,68 @@ const handleRejectRequest = async (requestId) => {
       dateFormat: 'dd/MM/yyyy' 
     });
     // Componente para exibir solicitações pendentes de aprovação do morador
+// Componente adicional em ResidentHomeScreen.js para solicitações pendentes de aprovação
 const PendingApprovalItem = ({ request, onApprove, onReject }) => {
   return (
-    <Card style={styles.pendingCard}>
-      <Card.Content>
+    <PaperCard style={styles.pendingRequestCard}>
+      <PaperCard.Content>
         <View style={styles.pendingHeader}>
           <MaterialCommunityIcons name="alert-circle" size={24} color="#FF9800" />
           <Text style={styles.pendingTitle}>Aprovação Pendente</Text>
         </View>
         
         <Text style={styles.pendingText}>
-          O motorista <Text style={styles.highlightText}>{request.driverName}</Text> está solicitando acesso à sua unidade.
+          O motorista <Text style={styles.highlightText}>{request.driverName}</Text> 
+          está solicitando acesso à sua unidade.
         </Text>
         
-        <View style={styles.driverInfo}>
-          <MaterialCommunityIcons name="car" size={18} color="#555" />
-          <Text style={styles.driverInfoText}>
-            Veículo: {request.vehicleModel || 'Não informado'}
-          </Text>
-        </View>
-        
-        <View style={styles.driverInfo}>
-          <MaterialCommunityIcons name="card-account-details" size={18} color="#555" />
-          <Text style={styles.driverInfoText}>
-            Placa: {request.vehiclePlate || 'Não informada'}
-          </Text>
-        </View>
-        
-        {request.comment && (
-          <View style={styles.commentSection}>
-            <Text style={styles.commentLabel}>Observações:</Text>
-            <Text style={styles.commentText}>{request.comment}</Text>
+        <View style={styles.driverDetails}>
+          <View style={styles.detailRow}>
+            <MaterialCommunityIcons name="car" size={18} color="#555" />
+            <Text style={styles.detailText}>
+              {request.vehicleModel || 'Veículo não informado'}
+            </Text>
           </View>
-        )}
+          
+          <View style={styles.detailRow}>
+            <MaterialCommunityIcons name="card-account-details" size={18} color="#555" />
+            <Text style={styles.detailText}>
+              {request.vehiclePlate || 'Placa não informada'}
+            </Text>
+          </View>
+        </View>
         
         <View style={styles.actionButtons}>
           <Button 
-            mode="contained"
-            icon="check"
+            mode="contained" 
             onPress={() => onApprove(request.id)}
-            style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
+            style={[styles.actionButton, {backgroundColor: '#4CAF50'}]}
           >
             Aprovar
           </Button>
           
           <Button 
-            mode="contained"
-            icon="close"
+            mode="contained" 
             onPress={() => onReject(request.id)}
-            style={[styles.actionButton, { backgroundColor: '#F44336' }]}
+            style={[styles.actionButton, {backgroundColor: '#F44336'}]}
           >
             Recusar
           </Button>
         </View>
-      </Card.Content>
-    </Card>
+      </PaperCard.Content>
+    </PaperCard>
   );
 };
+
+// Adicionar à renderização condicional na lista de solicitações
+{requests.filter(req => req.status === 'pending_resident' && req.flowType === 'driver_initiated').map(request => (
+  <PendingApprovalItem
+    key={request.id}
+    request={request}
+    onApprove={handleApproveRequest}
+    onReject={handleRejectRequest}
+  />
+))};
     
     return (
       <PaperCard 
@@ -426,18 +469,91 @@ const PendingApprovalItem = ({ request, onApprove, onReject }) => {
     <View style={styles.container}>
       {/* Cabeçalho */}
       <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.greeting}>
-            Olá, {userProfile?.displayName?.split(' ')[0] || 'Morador'}
-          </Text>
-          <Text style={styles.subtitle}>
-            Gerencie o acesso ao seu condomínio
-          </Text>
-        </View>
+  <View style={styles.headerContent}>
+    <Text style={styles.greeting}>
+      Olá, {userProfile?.displayName?.split(' ')[0] || 'Morador'}
+    </Text>
+    <Text style={styles.subtitle}>
+      Gerencie o acesso ao seu condomínio
+    </Text>
+  </View>
+  <TouchableOpacity 
+    style={styles.notificationButton}
+    onPress={() => navigation.navigate('ResidentNotifications')}
+  >
+    <MaterialCommunityIcons name="bell" size={24} color={theme.colors.primary} />
+    {pendingCount > 0 && (
+      <View style={styles.notificationBadge}>
+        <Text style={styles.notificationBadgeText}>{pendingCount}</Text>
       </View>
+    )}
+  </TouchableOpacity>
+</View>
       
       {/* Filtros */}
       {renderFilters()}
+      {requests.filter(req => req.status === 'pending_resident').length > 0 && (
+  <View style={styles.pendingSection}>
+    <Text style={styles.pendingSectionTitle}>Solicitações Aguardando Sua Aprovação</Text>
+    
+    {requests.filter(req => req.status === 'pending_resident').map(request => (
+      <PaperCard 
+        key={request.id}
+        style={[styles.requestCard, styles.pendingRequestCard]}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.statusContainer}>
+            <MaterialCommunityIcons name="account-clock" size={24} color="#FF9800" />
+            <Text style={[styles.statusText, { color: '#FF9800' }]}>
+              Aguardando Sua Aprovação
+            </Text>
+          </View>
+          <Text style={styles.dateText}>
+            {formatDate(request.createdAt, { showTime: true, dateFormat: 'dd/MM/yyyy' })}
+          </Text>
+        </View>
+        
+        <Divider style={styles.divider} />
+        
+        <View style={styles.cardContent}>
+          <View style={styles.driverInfo}>
+            <MaterialCommunityIcons name="account" size={24} color="#555" style={styles.icon} />
+            <View style={styles.driverDetails}>
+              <Text style={styles.driverName}>{request.driverName || 'Motorista'}</Text>
+              <Text style={styles.infoText}>Solicitando acesso à sua unidade</Text>
+            </View>
+          </View>
+          
+          <View style={styles.vehicleInfo}>
+            <MaterialCommunityIcons name="car" size={20} color="#555" style={styles.icon} />
+            <Text style={styles.infoText}>
+              {request.vehiclePlate ? `Placa: ${request.vehiclePlate}` : 'Placa não informada'} 
+              {request.vehicleModel ? ` • ${request.vehicleModel}` : ''}
+            </Text>
+          </View>
+        </View>
+        
+        <PaperCard.Actions style={styles.cardActions}>
+          <Button 
+            mode="contained" 
+            onPress={() => handleApproveRequest(request.id)}
+            style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
+          >
+            Aprovar
+          </Button>
+          
+          <Button 
+            mode="contained" 
+            onPress={() => handleRejectRequest(request.id)}
+            style={[styles.actionButton, { backgroundColor: '#F44336' }]}
+          >
+            Recusar
+          </Button>
+        </PaperCard.Actions>
+      </PaperCard>
+    ))}
+  </View>
+)}
       
       {/* Lista de solicitações */}
       {loading && !refreshing ? (
@@ -604,6 +720,23 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
+  pendingSection: {
+    marginBottom: 20,
+  },
+  pendingSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#FF9800',
+  },
+  pendingRequestCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
+  actionButton: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
   emptyText: {
     fontSize: 14,
     color: '#757575',
@@ -619,6 +752,28 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  // Adicionar estes estilos
+notificationButton: {
+  position: 'absolute',
+  right: 16,
+  top: 16,
+},
+notificationBadge: {
+  position: 'absolute',
+  right: -6,
+  top: -6,
+  backgroundColor: 'red',
+  borderRadius: 10,
+  width: 20,
+  height: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+notificationBadgeText: {
+  color: 'white',
+  fontSize: 12,
+  fontWeight: 'bold',
+},
 });
 
 export default ResidentHomeScreen;

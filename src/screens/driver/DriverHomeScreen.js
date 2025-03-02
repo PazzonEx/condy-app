@@ -45,8 +45,8 @@ const DriverHomeScreen = ({ navigation }) => {
       // Definir condições baseadas no filtro
       let status = null;
       if (filter === 'active') {
-        status = ['pending', 'authorized', 'arrived']; // Status considerados "ativos"
-      } else if (filter === 'completed') {
+        status = ['pending', 'pending_resident', 'authorized', 'arrived']; // Incluir "pending_resident"
+      }else if (filter === 'completed') {
         status = ['completed', 'entered', 'denied', 'canceled']; // Status considerados "completados"
       }
       
@@ -112,13 +112,22 @@ const DriverHomeScreen = ({ navigation }) => {
   // Renderizar um item da lista de solicitações
   const renderRequestItem = ({ item }) => {
     // Informações de status e cores
+
     const statusInfo = {
       pending: {
-        label: 'Pendente',
-        color: theme.colors.accent,
-        icon: 'clock-outline',
-        description: 'Aguardando aprovação'
-      },
+    label: 'Pendente',
+    color: theme.colors.accent,
+    icon: 'clock-outline',
+    description: 'Aguardando aprovação'
+  },
+  
+  // Adicionar o novo status "pending_resident"
+  pending_resident: {
+    label: 'Aguardando Morador',
+    color: '#FF9800', // Laranja para diferenciação
+    icon: 'account-clock',
+    description: 'Aguardando aprovação do morador'
+  },
       authorized: {
         label: 'Autorizado',
         color: '#4CAF50',
@@ -331,6 +340,21 @@ const DriverHomeScreen = ({ navigation }) => {
       {renderFilters()}
       
       {/* Lista de solicitações */}
+      {requests.filter(req => req.status === 'pending_resident').length > 0 && (
+          <PaperCard style={styles.pendingApprovalCard}>
+            <PaperCard.Content>
+              <View style={styles.pendingApprovalHeader}>
+                <MaterialCommunityIcons name="clock-alert" size={24} color="#FF9800" />
+                <Text style={styles.pendingApprovalTitle}>Aguardando Aprovação</Text>
+              </View>
+              
+              <Text style={styles.pendingApprovalText}>
+                Você tem {requests.filter(req => req.status === 'pending_resident').length} solicitação(ões) 
+                aguardando aprovação do morador. Você será notificado quando houver uma resposta.
+              </Text>
+            </PaperCard.Content>
+          </PaperCard>
+        )}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -375,6 +399,26 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 22,
     fontWeight: 'bold',
+  },
+  pendingApprovalCard: {
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
+  pendingApprovalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  pendingApprovalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    color: '#FF9800',
+  },
+  pendingApprovalText: {
+    fontSize: 14,
+    color: '#555',
   },
   subtitle: {
     fontSize: 14,

@@ -1,70 +1,98 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Text, Card, Button, ActivityIndicator, Divider } from 'react-native-paper';
+import { Text, Card, ActivityIndicator, Divider } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAuth } from '../../hooks/useAuth';
 import FirestoreService from '../../services/firestore.service';
 import AccessService from '../../services/access.service';
+import Button from '../../components/Button';
 import { formatDate } from '../../utils/format';
 
 const ResidentNotificationsScreen = ({ navigation }) => {
   const { userProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [error, setError] = useState(null);
   
-  const loadPendingRequests = useCallback(async () => {
+  // Carregar solicitações pendentes de aprovação quando a tela receber foco
+  useFocusEffect(
+    useCallback(() => {
+      loadPendingRequests();
+    }, [])
+  );
+  
+  const loadPendingRequests = async () => {
     if (!userProfile?.id) return;
     
     try {
       setLoading(true);
+      setError(null);
       
-      // Query pending requests requiring resident approval
-      const requests = await FirestoreService.queryDocuments('access_requests', [
+      // Buscar solicitações pendentes de aprovação do morador
+      const conditions = [
         { field: 'residentId', operator: '==', value: userProfile.id },
         { field: 'status', operator: '==', value: 'pending_resident' }
-      ]);
+      ];
       
+      const requests = await FirestoreService.queryDocuments(
+        'access_requests', 
+        conditions,
+        { field: 'createdAt', direction: 'desc' }
+      );
+      
+      console.log(`Encontradas ${requests.length} solicitações pendentes de aprovação`);
       setPendingRequests(requests);
+      
     } catch (error) {
-      console.error('Error loading pending requests:', error);
-      Alert.alert('Error', 'Could not load pending requests');
+      console.error('Erro ao carregar solicitações pendentes:', error);
+      setError('Não foi possível carregar as solicitações pendentes');
     } finally {
       setLoading(false);
     }
-  }, [userProfile]);
-  
-  // Load requests when screen comes into focus
-  useFocusEffect(loadPendingRequests);
+  };
   
   const handleApproveRequest = async (requestId) => {
     try {
-      // Update request status
-      await AccessService.approveResidentRequest(requestId);
+      setLoading(true);
       
-      // Refresh list
+      // Atualizar status da solicitação para 'pending' (aguardando aprovação da portaria)
+      await AccessService.updateAccessRequestStatus(requestId, 'pending', {
+        residentApproved: true
+      });
+      
+      Alert.alert(
+        'Sucesso', 
+        'Solicitação aprovada. A portaria será notificada.'
+      );
+      
+      // Recarregar solicitações
       loadPendingRequests();
-      
-      Alert.alert('Success', 'Request approved and forwarded to gatehouse');
     } catch (error) {
-      console.error('Error approving request:', error);
-      Alert.alert('Error', 'Could not approve the request');
+      console.error('Erro ao aprovar solicitação:', error);
+      Alert.alert('Erro', 'Não foi possível aprovar a solicitação');
+      setLoading(false);
     }
   };
   
-  const handleDenyRequest = async (requestId) => {
+  const handleRejectRequest = async (requestId) => {
     try {
-      // Update request status
-      await AccessService.denyResidentRequest(requestId);
+      setLoading(true);
       
-      // Refresh list
+      // Atualizar status da solicitação para 'denied'
+      await AccessService.updateAccessRequestStatus(requestId, 'denied', {
+        residentApproved: false
+      });
+      
+      Alert.alert('Sucesso', 'Solicitação rejeitada.');
+      
+      // Recarregar solicitações
       loadPendingRequests();
-      
-      Alert.alert('Success', 'Request denied');
     } catch (error) {
-      console.error('Error denying request:', error);
-      Alert.alert('Error', 'Could not deny the request');
+      console.error('Erro ao rejeitar solicitação:', error);
+      Alert.alert('Erro', 'Não foi possível rejeitar a solicitação');
+      setLoading(false);
     }
   };
   
@@ -72,21 +100,33 @@ const ResidentNotificationsScreen = ({ navigation }) => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1E88E5" />
-        <Text style={styles.loadingText}>Loading pending requests...</Text>
+        <Text style={styles.loadingText}>Carregando solicitações pendentes...</Text>
+      </View>
+    );
+  }
+  
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <MaterialCommunityIcons name="alert-circle" size={48} color="#F44336" />
+        <Text style={styles.errorText}>{error}</Text>
+        <Button mode="contained" onPress={loadPendingRequests}>
+          Tentar Novamente
+        </Button>
       </View>
     );
   }
   
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.headerTitle}>Pending Access Requests</Text>
+      <Text style={styles.headerTitle}>Solicitações Pendentes</Text>
       
       {pendingRequests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <MaterialCommunityIcons name="bell-outline" size={64} color="#BDBDBD" />
-          <Text style={styles.emptyText}>No pending requests</Text>
+          <Text style={styles.emptyText}>Nenhuma solicitação pendente</Text>
           <Text style={styles.emptySubtext}>
-            When drivers request access to your unit, you'll see them here
+            Quando motoristas solicitarem acesso à sua unidade, você verá as solicitações aqui
           </Text>
         </View>
       ) : (
@@ -94,8 +134,8 @@ const ResidentNotificationsScreen = ({ navigation }) => {
           <Card key={request.id} style={styles.requestCard}>
             <Card.Content>
               <View style={styles.requestHeader}>
-                <MaterialCommunityIcons name="account" size={24} color="#1E88E5" />
-                <Text style={styles.driverName}>{request.driverName}</Text>
+                <MaterialCommunityIcons name="account-clock" size={24} color="#FF9800" />
+                <Text style={styles.driverName}>{request.driverName || 'Motorista'}</Text>
                 <Text style={styles.requestDate}>
                   {formatDate(request.createdAt, { showDate: true, showTime: true })}
                 </Text>
@@ -106,29 +146,31 @@ const ResidentNotificationsScreen = ({ navigation }) => {
               <View style={styles.detailsContainer}>
                 <View style={styles.detailRow}>
                   <MaterialCommunityIcons name="car" size={20} color="#555" />
-                  <Text style={styles.detailLabel}>Vehicle:</Text>
+                  <Text style={styles.detailLabel}>Veículo:</Text>
                   <Text style={styles.detailValue}>
-                    {request.vehicleModel} ({request.vehiclePlate})
+                    {request.vehicleModel || 'Não informado'} 
+                    {request.vehiclePlate ? ` (${request.vehiclePlate})` : ''}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <MaterialCommunityIcons name="office-building" size={20} color="#555" />
-                  <Text style={styles.detailLabel}>Condominium:</Text>
-                  <Text style={styles.detailValue}>{request.condoName}</Text>
+                  <Text style={styles.detailLabel}>Condomínio:</Text>
+                  <Text style={styles.detailValue}>{request.condoName || 'Não informado'}</Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <MaterialCommunityIcons name="home" size={20} color="#555" />
-                  <Text style={styles.detailLabel}>Unit:</Text>
+                  <Text style={styles.detailLabel}>Unidade:</Text>
                   <Text style={styles.detailValue}>
-                    {request.unit}{request.block ? `, Block ${request.block}` : ''}
+                    {request.unit || 'Não informada'}
+                    {request.block ? `, Bloco ${request.block}` : ''}
                   </Text>
                 </View>
                 
                 {request.comment && (
                   <View style={styles.commentContainer}>
-                    <Text style={styles.commentLabel}>Comment:</Text>
+                    <Text style={styles.commentLabel}>Observações:</Text>
                     <Text style={styles.commentText}>{request.comment}</Text>
                   </View>
                 )}
@@ -139,17 +181,17 @@ const ResidentNotificationsScreen = ({ navigation }) => {
               <Button 
                 mode="contained" 
                 onPress={() => handleApproveRequest(request.id)}
-                style={styles.approveButton}
+                style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
               >
-                Approve
+                Aprovar
               </Button>
               
               <Button 
-                mode="outlined" 
-                onPress={() => handleDenyRequest(request.id)}
-                style={styles.denyButton}
+                mode="contained" 
+                onPress={() => handleRejectRequest(request.id)}
+                style={[styles.actionButton, { backgroundColor: '#F44336' }]}
               >
-                Deny
+                Recusar
               </Button>
             </Card.Actions>
           </Card>
@@ -179,6 +221,19 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     color: '#757575',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 10,
+    marginBottom: 20,
+    fontSize: 16,
+    color: '#757575',
+    textAlign: 'center',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -258,12 +313,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
   },
-  approveButton: {
-    backgroundColor: '#4CAF50',
-    marginRight: 8,
-  },
-  denyButton: {
-    borderColor: '#F44336',
+  actionButton: {
+    marginLeft: 8,
   }
 });
 

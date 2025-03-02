@@ -4,88 +4,70 @@ import { auth } from '../config/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 
 const AccessService = {
-  // Resident approval function
+// No AccessService.js
 async approveResidentRequest(requestId) {
   try {
     const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error('User not authenticated');
+    if (!currentUser) throw new Error('Usuário não autenticado');
     
-    // Get the request
+    // Obter detalhes da solicitação
     const request = await FirestoreService.getDocument('access_requests', requestId);
     
-    // Validate request
-    if (!request) throw new Error('Request not found');
+    if (!request) throw new Error('Solicitação não encontrada');
     
-    if (request.status !== 'pending_resident') {
-      throw new Error('Request is not in the correct state for resident approval');
-    }
-    
+    // Verificar permissão (apenas o morador da solicitação pode aprovar)
     if (request.residentId !== currentUser.uid) {
-      throw new Error('You are not authorized to approve this request');
+      throw new Error('Você não tem permissão para aprovar esta solicitação');
     }
     
-    // Update request status
+    // Verificar status correto
+    if (request.status !== 'pending_resident') {
+      throw new Error('Esta solicitação não está aguardando aprovação');
+    }
+    
+    // Atualizar status para pendente de aprovação da portaria
     const updateData = {
-      status: 'pending_gatehouse',
-      currentApprovalStage: 'gatehouse',
+      status: 'pending',
       residentApproved: true,
       residentApprovedAt: serverTimestamp(),
-      residentApprovedBy: currentUser.uid,
       updatedAt: serverTimestamp()
     };
     
     await FirestoreService.updateDocument('access_requests', requestId, updateData);
     
-    // Send notification to gatehouse staff
+    // Enviar notificações para portaria e motorista
     try {
-      // Get condominium staff tokens
-      const staffTokens = await this.getCondoStaffTokens(request.condoId);
-      
-      if (staffTokens.length > 0) {
-        const NotificationService = require('./notification.service').default;
-        
-        // Send notifications to all gatehouse staff
-        for (const token of staffTokens) {
+      // Notificar portaria
+      if (request.condoId) {
+        const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
+        if (condoDoc && condoDoc.notificationToken) {
           await NotificationService.sendLocalNotification(
-            token,
-            'New Access Request',
-            `New access request approved by resident for ${request.driverName}`,
-            {
-              requestId: requestId,
-              type: 'gatehouse_approval_needed',
-              driverName: request.driverName,
-              unit: request.unit,
-              block: request.block
-            }
+            'Nova Solicitação Aprovada',
+            `Acesso para ${request.driverName} aprovado pelo morador da unidade ${request.unit}`,
+            { requestId, type: 'new_approved_request' }
           );
         }
       }
       
-      // Notify the driver as well
+      // Notificar motorista
       if (request.driverId) {
         const driverDoc = await FirestoreService.getDocument('drivers', request.driverId);
-        
         if (driverDoc && driverDoc.notificationToken) {
           await NotificationService.sendLocalNotification(
-            driverDoc.notificationToken,
-            'Request Update',
-            `Your access request for ${request.condoName} has been approved by the resident and is pending gatehouse approval`,
-            {
-              requestId: requestId,
-              type: 'request_update',
-              status: 'pending_gatehouse'
-            }
+            'Solicitação Aprovada',
+            `Sua solicitação de acesso foi aprovada pelo morador`,
+            { requestId, type: 'resident_approved' }
           );
         }
       }
     } catch (notifError) {
-      console.error('Error sending notifications:', notifError);
-      // Continue despite notification error
+      console.error('Erro ao enviar notificações:', notifError);
+      // Continuar mesmo com erro nas notificações
     }
     
     return true;
   } catch (error) {
-    console.error('Error approving resident request:', error);
+    console.error('Erro ao aprovar solicitação:', error);
     throw error;
   }
 },
@@ -534,101 +516,98 @@ async _createResidentAccessRequest(requestData, baseData) {
    * Criar solicitação de acesso para motorista
    * @private
    */
-  // Em AccessService.js - Método para criar solicitação iniciada pelo motorista
-async _createDriverAccessRequest(requestData, baseData) {
-  const currentUser = auth.currentUser;
-  
-  // Buscar informações do motorista
-  const driverDoc = await FirestoreService.getDocument('drivers', currentUser.uid);
-  
-  if (!driverDoc) {
-    throw new Error('Perfil de motorista não encontrado');
-  }
-  
-  // Validar se unidade e bloco foram informados
-  if (!requestData.unit) {
-    throw new Error('Número da unidade é obrigatório');
-  }
-  
-  // Buscar morador pelo condomínio, unidade e bloco
-  const conditions = [
-    { field: 'condoId', operator: '==', value: requestData.condoId },
-    { field: 'unit', operator: '==', value: requestData.unit }
-  ];
-  
-  // Adicionar bloco à consulta se fornecido
-  if (requestData.block) {
-    conditions.push({ field: 'block', operator: '==', value: requestData.block });
-  }
-  
-  const residents = await FirestoreService.queryDocuments('residents', conditions);
-  
-  if (residents.length === 0) {
-    throw new Error('Nenhum morador encontrado para esta unidade');
-  }
-  
-  // Se houver vários moradores, usar o primeiro (pode ser melhorado para seleção)
-  const residentData = residents[0];
-  
-  // Buscar informações do condomínio
-  const condoData = await FirestoreService.getDocument('condos', requestData.condoId);
-  
-  // Criar dados da solicitação com informações completas
-  const accessRequestData = {
-    ...baseData,
-    // Informações do motorista
-    driverId: currentUser.uid,
-    driverName: driverDoc.name || currentUser.displayName,
-    vehiclePlate: driverDoc.vehiclePlate || '',
-    vehicleModel: driverDoc.vehicleModel || '',
+  async _createDriverAccessRequest(requestData, baseData) {
+    const currentUser = auth.currentUser;
     
-    // Informações do condomínio
-    condoId: requestData.condoId,
-    condoName: condoData ? condoData.name : 'Condomínio não identificado',
+    // Buscar informações completas do motorista
+    const driverDoc = await FirestoreService.getDocument('drivers', currentUser.uid);
     
-    // Informações da localização
-    unit: requestData.unit,
-    block: requestData.block || '',
-    
-    // Informações do morador
-    residentId: residentData.id,
-    residentName: residentData.name || residentData.displayName || 'Morador não identificado',
-    
-    // Detalhes da solicitação
-    comment: requestData.comment || '',
-    type: requestData.type || 'driver',
-    status: 'pending_resident', // Status especial aguardando aprovação do morador
-    flowType: 'driver_initiated'
-  };
-  
-  // Criar o documento da solicitação de acesso
-  const createdRequest = await FirestoreService.createDocument('access_requests', accessRequestData);
-  
-  // Enviar notificação para o morador
-  try {
-    // Importar serviço de notificação
-    const NotificationService = require('./notification.service').default;
-    
-    if (residentData.notificationToken) {
-      // Enviar notificação push
-      await NotificationService.sendLocalNotification(
-        'Nova Solicitação de Acesso',
-        `${accessRequestData.driverName} solicitou acesso à sua unidade`,
-        {
-          requestId: createdRequest.id,
-          type: 'resident_approval_needed',
-          driverName: accessRequestData.driverName,
-          vehiclePlate: accessRequestData.vehiclePlate
-        }
-      );
+    if (!driverDoc) {
+      throw new Error('Perfil de motorista não encontrado');
     }
-  } catch (notifError) {
-    console.error('Erro ao enviar notificação para o morador:', notifError);
-    // Continuar mesmo com erro na notificação
-  }
-  
-  return createdRequest;
-},
+    
+    // Validar dados obrigatórios
+    if (!requestData.unit) {
+      throw new Error('Número da unidade é obrigatório');
+    }
+    
+    if (!requestData.condoId) {
+      throw new Error('ID do condomínio é obrigatório');
+    }
+    
+    // Buscar morador com base nas informações da unidade e condomínio
+    const conditions = [
+      { field: 'condoId', operator: '==', value: requestData.condoId },
+      { field: 'unit', operator: '==', value: requestData.unit }
+    ];
+    
+    // Adicionar bloco à consulta se fornecido
+    if (requestData.block) {
+      conditions.push({ field: 'block', operator: '==', value: requestData.block });
+    }
+    
+    const residents = await FirestoreService.queryDocuments('residents', conditions);
+    
+    if (residents.length === 0) {
+      throw new Error('Nenhum morador encontrado para esta unidade');
+    }
+    
+    // Selecionar o morador da unidade
+    const residentData = residents[0];
+    
+    // Buscar informações do condomínio
+    const condoData = await FirestoreService.getDocument('condos', requestData.condoId);
+    
+    // Criar dados da solicitação com status específico para aprovação do morador
+    const accessRequestData = {
+      ...baseData,
+      // Informações do motorista (usando dados do perfil para garantir consistência)
+      driverId: currentUser.uid,
+      driverName: driverDoc.name || currentUser.displayName,
+      vehiclePlate: driverDoc.vehiclePlate || '',
+      vehicleModel: driverDoc.vehicleModel || '',
+      
+      // Informações do condomínio
+      condoId: requestData.condoId,
+      condoName: condoData ? condoData.name : 'Condomínio não identificado',
+      
+      // Informações da unidade
+      unit: requestData.unit,
+      block: requestData.block || '',
+      
+      // Informações do morador (muito importante!)
+      residentId: residentData.id,  // ID correto do morador para vincular a solicitação
+      residentName: residentData.name || 'Morador',
+      
+      // Detalhes da solicitação
+      comment: requestData.comment || '',
+      type: 'driver',
+      status: 'pending_resident',  // Status específico para aprovação do morador
+      flowType: 'driver_initiated'  // Identificador do fluxo iniciado pelo motorista
+    };
+    
+    // Criar a solicitação no Firestore
+    const createdRequest = await FirestoreService.createDocument('access_requests', accessRequestData);
+    
+    // Enviar notificação para o morador se possível
+    if (residentData.notificationToken) {
+      try {
+        await NotificationService.sendLocalNotification(
+          'Nova Solicitação de Acesso',
+          `${accessRequestData.driverName} solicita acesso à sua unidade`,
+          {
+            requestId: createdRequest.id,
+            type: 'resident_approval_needed'
+          }
+        );
+      } catch (notifError) {
+        console.error('Erro ao enviar notificação:', notifError);
+        // Continuar mesmo com erro na notificação
+      }
+    }
+    
+    return createdRequest;
+  },
 
   /**
    * Criar solicitação de acesso para condomínio
@@ -758,110 +737,65 @@ async _createDriverAccessRequest(requestData, baseData) {
    * @param {string} comment - Comentário opcional
    * @returns {Promise<boolean>} - true se atualizado com sucesso
    */
-  // Em AccessService.js - Método para atualizar status
-async updateAccessRequestStatus(requestId, newStatus, comment = null) {
+// Em AccessService.js
+async updateAccessRequestStatus(requestId, newStatus, additionalData = {}) {
   try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Usuário não autenticado');
+    
     // Obter detalhes da solicitação atual
     const request = await FirestoreService.getDocument('access_requests', requestId);
-    
-    if (!request) {
-      throw new Error('Solicitação não encontrada');
-    }
-    
-    const currentUser = auth.currentUser;
-    
-    if (!currentUser) {
-      throw new Error('Usuário não autenticado');
-    }
+    if (!request) throw new Error('Solicitação não encontrada');
     
     // Dados a serem atualizados
     const updateData = {
       status: newStatus,
       updatedBy: currentUser.uid,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
+      ...additionalData
     };
-    
-    // Adicionar comentário, se fornecido
-    if (comment) {
-      updateData.comment = comment;
-    }
     
     // Atualizar documento no Firestore
     await FirestoreService.updateDocument('access_requests', requestId, updateData);
     
-    // Enviar notificações apropriadas com base na mudança de status
     try {
-      const NotificationService = require('./notification.service').default;
-      
-      // Fluxo iniciado pelo motorista
-      if (request.flowType === 'driver_initiated') {
-        if (newStatus === 'pending') {
-          // Morador aprovou, notificar portaria
-          await NotificationService.notifyGatehouse(
-            request.condoId,
-            'Nova Solicitação de Acesso',
-            `${request.driverName} tem acesso autorizado pelo morador para a unidade ${request.unit}${request.block ? ` Bloco ${request.block}` : ''}`,
-            { requestId, type: 'new_approved_request' }
+      // Status específico: Morador aprova solicitação do motorista
+      if (request.status === 'pending_resident' && newStatus === 'pending') {
+        // Notificar portaria
+        const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
+        if (condoDoc && condoDoc.notificationToken) {
+          await NotificationService.sendLocalNotification(
+            'Nova Solicitação Aprovada',
+            `O morador aprovou o acesso para ${request.driverName}`,
+            { requestId: requestId, type: 'approved_by_resident' }
           );
-          
-          // Notificar motorista que morador aprovou
-          await NotificationService.notifyDriver(
-            request.driverId,
-            'Acesso Aprovado pelo Morador',
-            `Sua solicitação para a unidade ${request.unit}${request.block ? ` Bloco ${request.block}` : ''} foi aprovada pelo morador`,
-            { requestId, type: 'resident_approved' }
-          );
-        } else if (newStatus === 'denied') {
-          // Morador recusou, notificar motorista
-          await NotificationService.notifyDriver(
-            request.driverId,
-            'Acesso Recusado',
-            `Sua solicitação para a unidade ${request.unit}${request.block ? ` Bloco ${request.block}` : ''} foi recusada pelo morador`,
-            { requestId, type: 'resident_denied' }
+        }
+        
+        // Notificar motorista
+        const driverDoc = await FirestoreService.getDocument('drivers', request.driverId);
+        if (driverDoc && driverDoc.notificationToken) {
+          await NotificationService.sendLocalNotification(
+            'Solicitação Aprovada',
+            `Sua solicitação foi aprovada pelo morador e encaminhada à portaria`,
+            { requestId: requestId, type: 'approved_by_resident' }
           );
         }
       }
       
-      // Notificações comuns para ambos os fluxos
-      switch (newStatus) {
-        case 'authorized':
-          // Portaria aprovou, notificar morador e motorista
-          await NotificationService.notifyResident(
-            request.residentId,
-            'Acesso Aprovado pela Portaria',
-            `O acesso para ${request.driverName} foi autorizado pela portaria`,
-            { requestId, type: 'condo_approved' }
+      // Status específico: Morador rejeita solicitação do motorista
+      if (request.status === 'pending_resident' && newStatus === 'denied') {
+        // Notificar motorista
+        const driverDoc = await FirestoreService.getDocument('drivers', request.driverId);
+        if (driverDoc && driverDoc.notificationToken) {
+          await NotificationService.sendLocalNotification(
+            'Solicitação Negada',
+            `Sua solicitação foi negada pelo morador`,
+            { requestId: requestId, type: 'denied_by_resident' }
           );
-          
-          await NotificationService.notifyDriver(
-            request.driverId,
-            'Acesso Autorizado',
-            `Seu acesso ao condomínio ${request.condoName} foi autorizado`,
-            { requestId, type: 'condo_approved' }
-          );
-          break;
-          
-        case 'denied':
-          // Portaria negou, notificar morador e motorista (se não foi o morador que negou)
-          if (request.status !== 'denied') {
-            await NotificationService.notifyResident(
-              request.residentId,
-              'Acesso Negado pela Portaria',
-              `O acesso para ${request.driverName} foi negado pela portaria`,
-              { requestId, type: 'condo_denied' }
-            );
-            
-            await NotificationService.notifyDriver(
-              request.driverId,
-              'Acesso Negado',
-              `Seu acesso ao condomínio ${request.condoName} foi negado pela portaria`,
-              { requestId, type: 'condo_denied' }
-            );
-          }
-          break;
-          
-        // Adicione outros casos conforme necessário
+        }
       }
+      
+      // Outras notificações para mudanças de status...
     } catch (notifError) {
       console.error('Erro ao enviar notificações:', notifError);
       // Continuar mesmo com erro nas notificações

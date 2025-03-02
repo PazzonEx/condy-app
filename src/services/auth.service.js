@@ -14,13 +14,24 @@ import { auth } from '../config/firebase';
 // Serviço de autenticação
 const AuthService = {
   // Registrar um novo usuário
-  async register(email, password, displayName) {
+  async register(email, password, displayName, userType) {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
       // Atualizar o perfil do usuário com o nome
       if (displayName) {
         await updateProfile(userCredential.user, { displayName });
       }
+      
+      // Importante: criar documento com tipo de usuário correto
+      await FirestoreService.createDocumentWithId('users', userCredential.user.uid, {
+        email,
+        displayName,
+        type: userType || 'resident', // Default é residente
+        status: 'active',
+        createdAt: new Date()
+      });
+      
       return userCredential.user;
     } catch (error) {
       console.error('Erro ao registrar usuário:', error);

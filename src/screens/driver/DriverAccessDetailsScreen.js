@@ -38,6 +38,12 @@ const DriverAccessDetailsScreen = ({ route, navigation }) => {
       icon: 'clock-outline',
       description: 'Aguardando aprovação da portaria'
     },
+    pending_resident: {
+      label: 'Aguardando Morador',
+      color: '#FF9800', // Laranja
+      icon: 'account-clock',
+      description: 'Aguardando aprovação do morador'
+    },
     authorized: {
       label: 'Autorizado',
       color: '#4CAF50',
