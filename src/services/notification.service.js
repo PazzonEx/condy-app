@@ -56,6 +56,72 @@ const NotificationService = {
 
     return token;
   },
+  // Em notification.service.js - Adicionar métodos para enviar notificações aos diferentes tipos de usuários
+// Enviar notificação para morador
+async notifyResident(residentId, title, body, data = {}) {
+  try {
+    const residentDoc = await FirestoreService.getDocument('residents', residentId);
+    
+    if (!residentDoc || !residentDoc.notificationToken) {
+      console.log('Token de notificação do morador não encontrado');
+      return false;
+    }
+    
+    return this.sendPushNotification(
+      residentDoc.notificationToken,
+      title,
+      body,
+      data
+    );
+  } catch (error) {
+    console.error('Erro ao enviar notificação para morador:', error);
+    return false;
+  }
+},
+
+// Enviar notificação para a portaria (condomínio)
+async notifyGatehouse(condoId, title, body, data = {}) {
+  try {
+    const condoDoc = await FirestoreService.getDocument('condos', condoId);
+    
+    if (!condoDoc || !condoDoc.notificationToken) {
+      console.log('Token de notificação do condomínio não encontrado');
+      return false;
+    }
+    
+    return this.sendPushNotification(
+      condoDoc.notificationToken,
+      title,
+      body,
+      data
+    );
+  } catch (error) {
+    console.error('Erro ao enviar notificação para portaria:', error);
+    return false;
+  }
+},
+
+// Enviar notificação para motorista
+async notifyDriver(driverId, title, body, data = {}) {
+  try {
+    const driverDoc = await FirestoreService.getDocument('drivers', driverId);
+    
+    if (!driverDoc || !driverDoc.notificationToken) {
+      console.log('Token de notificação do motorista não encontrado');
+      return false;
+    }
+    
+    return this.sendPushNotification(
+      driverDoc.notificationToken,
+      title,
+      body,
+      data
+    );
+  } catch (error) {
+    console.error('Erro ao enviar notificação para motorista:', error);
+    return false;
+  }
+},
 
   /**
    * Salvar token de notificação no Firestore

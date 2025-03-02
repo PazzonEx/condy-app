@@ -18,28 +18,51 @@ import {
   // Serviço de Firestore para operações de banco de dados
   const FirestoreService = {
     // Criar documento com ID gerado automaticamente
-    async createDocument(collectionName, data) {
-      try {
-        // Remover campos undefined/null
-        const cleanData = {};
-        for (const key in data) {
-          if (data[key] !== undefined && data[key] !== null) {
-            cleanData[key] = data[key];
-          }
-        }
-        
-        // Adiciona timestamp de criação e atualização
-        cleanData.createdAt = serverTimestamp();
-        cleanData.updatedAt = serverTimestamp();
-        
-        const docRef = await addDoc(collection(firestore, collectionName), cleanData);
-        return { id: docRef.id, ...cleanData };
-      } catch (error) {
-        console.error(`Erro ao criar documento em ${collectionName}:`, error);
-        throw error;
+  // In FirestoreService.js - createDocument method
+async createDocument(collectionName, data) {
+  try {
+    // Remove undefined/null fields and validate data
+    const cleanData = {};
+    const requiredFields = {
+      'access_requests': ['condoId', 'driverName']
+    };
+    
+    // Process fields
+    for (const key in data) {
+      if (data[key] !== undefined && data[key] !== null) {
+        cleanData[key] = data[key];
       }
-    },
-  
+    }
+    
+    // Check for required fields
+    if (collectionName in requiredFields) {
+      const missing = requiredFields[collectionName].filter(field => 
+        !cleanData[field] || (typeof cleanData[field] === 'string' && !cleanData[field].trim())
+      );
+      
+      if (missing.length > 0) {
+        console.warn(`Missing required fields for ${collectionName}: ${missing.join(', ')}`);
+        
+        // Add default values for critical fields
+        if (missing.includes('condoId')) {
+          cleanData.condoId = 'temp_condo_id';
+          console.warn('Using temporary condoId. This should be fixed in production.');
+        }
+      }
+    }
+    
+    // Add timestamps
+    cleanData.createdAt = serverTimestamp();
+    cleanData.updatedAt = serverTimestamp();
+    
+    // Create document
+    const docRef = await addDoc(collection(firestore, collectionName), cleanData);
+    return { id: docRef.id, ...cleanData };
+  } catch (error) {
+    console.error(`Error creating document in ${collectionName}:`, error);
+    throw error;
+  }
+},
     // Criar documento com ID específico
     async createDocumentWithId(collectionName, docId, data) {
       try {

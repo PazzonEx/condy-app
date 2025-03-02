@@ -79,6 +79,47 @@ const CondoQRScannerScreen = ({ navigation }) => {
     setLastScannedId(requestId);
     return false;
   };
+  // In CondoQRScannerScreen.js
+const handleManualPlateVerification = async () => {
+  try {
+    setVerifyByPlateLoading(true);
+    
+    if (!manualPlate.trim()) {
+      Alert.alert('Error', 'Please enter a vehicle plate');
+      setVerifyByPlateLoading(false);
+      return;
+    }
+    
+    // Clean up the plate format
+    const formattedPlate = manualPlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    
+    // Search for pending requests with this plate
+    const requests = await AccessService.queryAccessRequestsByPlate(formattedPlate);
+    
+    if (requests.length === 0) {
+      Alert.alert('No Requests Found', 'No pending access requests found for this vehicle plate.');
+      setVerifyByPlateLoading(false);
+      return;
+    }
+    
+    // If multiple requests, show a selector
+    if (requests.length > 1) {
+      setMultipleRequests(requests);
+      setShowRequestSelector(true);
+      setVerifyByPlateLoading(false);
+      return;
+    }
+    
+    // If single request, process it
+    const request = requests[0];
+    handleProcessRequest(request);
+  } catch (error) {
+    console.error('Error verifying plate:', error);
+    Alert.alert('Error', 'Could not verify the vehicle plate');
+  } finally {
+    setVerifyByPlateLoading(false);
+  }
+};
 
   // Manipulador para QR Code escaneado
   const handleBarCodeScanned = async ({ type, data }) => {
@@ -248,6 +289,28 @@ const CondoQRScannerScreen = ({ navigation }) => {
           <Text style={styles.headerTitle}>Escanear QR Code</Text>
         </View>
       </CameraView>
+      {/* Manual plate verification section */}
+<View style={styles.manualVerification}>
+  <Text style={styles.sectionTitle}>Verify by Vehicle Plate</Text>
+  <View style={styles.manualPlateInput}>
+    <Input
+      label="Vehicle Plate"
+      value={manualPlate}
+      onChangeText={setManualPlate}
+      placeholder="Enter plate number"
+      autoCapitalize="characters"
+    />
+    <Button
+      mode="contained"
+      onPress={handleManualPlateVerification}
+      loading={verifyByPlateLoading}
+      disabled={verifyByPlateLoading || !manualPlate.trim()}
+      style={styles.verifyButton}
+    >
+      Verify
+    </Button>
+  </View>
+</View>
       
       {/* Controles inferiores */}
       <View style={styles.controlsContainer}>

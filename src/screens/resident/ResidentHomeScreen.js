@@ -32,6 +32,59 @@ const ResidentHomeScreen = ({ navigation }) => {
       loadRequests();
     }, [filter])
   );
+  // Em ResidentHomeScreen.js - Adicionar filtragem para solicitações pendentes de aprovação
+useEffect(() => {
+  // Filtrar solicitações pendentes de aprovação do morador
+  const pendingApprovalRequests = requests.filter(
+    req => req.status === 'pending_resident' && req.flowType === 'driver_initiated'
+  );
+  
+  // Se houver solicitações pendentes, mostrar indicador ou notificação
+  if (pendingApprovalRequests.length > 0) {
+    // Atualizar badge ou contador
+    //setBadgeCount(pendingApprovalRequests.length);
+  }
+}, [requests]);
+
+// Função para aprovar solicitação de acesso
+const handleApproveRequest = async (requestId) => {
+  try {
+    setLoading(true);
+    
+    // Atualizar status da solicitação
+    await AccessService.updateAccessRequestStatus(requestId, 'pending');
+    
+    Alert.alert('Sucesso', 'Solicitação de acesso aprovada. A portaria será notificada.');
+    
+    // Recarregar lista
+    loadRequests();
+  } catch (error) {
+    console.error('Erro ao aprovar solicitação:', error);
+    Alert.alert('Erro', 'Não foi possível aprovar a solicitação');
+  } finally {
+    setLoading(false);
+  }
+};
+
+// Função para recusar solicitação de acesso
+const handleRejectRequest = async (requestId) => {
+  try {
+    setLoading(true);
+    
+    // Atualizar status da solicitação
+    await AccessService.updateAccessRequestStatus(requestId, 'denied');
+    
+    Alert.alert('Sucesso', 'Solicitação de acesso foi negada.');
+    
+    // Recarregar lista
+    loadRequests();
+  } catch (error) {
+    console.error('Erro ao recusar solicitação:', error);
+    Alert.alert('Erro', 'Não foi possível recusar a solicitação');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Função para carregar solicitações
   const loadRequests = async () => {
@@ -154,6 +207,64 @@ const ResidentHomeScreen = ({ navigation }) => {
       showTime: true, 
       dateFormat: 'dd/MM/yyyy' 
     });
+    // Componente para exibir solicitações pendentes de aprovação do morador
+const PendingApprovalItem = ({ request, onApprove, onReject }) => {
+  return (
+    <Card style={styles.pendingCard}>
+      <Card.Content>
+        <View style={styles.pendingHeader}>
+          <MaterialCommunityIcons name="alert-circle" size={24} color="#FF9800" />
+          <Text style={styles.pendingTitle}>Aprovação Pendente</Text>
+        </View>
+        
+        <Text style={styles.pendingText}>
+          O motorista <Text style={styles.highlightText}>{request.driverName}</Text> está solicitando acesso à sua unidade.
+        </Text>
+        
+        <View style={styles.driverInfo}>
+          <MaterialCommunityIcons name="car" size={18} color="#555" />
+          <Text style={styles.driverInfoText}>
+            Veículo: {request.vehicleModel || 'Não informado'}
+          </Text>
+        </View>
+        
+        <View style={styles.driverInfo}>
+          <MaterialCommunityIcons name="card-account-details" size={18} color="#555" />
+          <Text style={styles.driverInfoText}>
+            Placa: {request.vehiclePlate || 'Não informada'}
+          </Text>
+        </View>
+        
+        {request.comment && (
+          <View style={styles.commentSection}>
+            <Text style={styles.commentLabel}>Observações:</Text>
+            <Text style={styles.commentText}>{request.comment}</Text>
+          </View>
+        )}
+        
+        <View style={styles.actionButtons}>
+          <Button 
+            mode="contained"
+            icon="check"
+            onPress={() => onApprove(request.id)}
+            style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
+          >
+            Aprovar
+          </Button>
+          
+          <Button 
+            mode="contained"
+            icon="close"
+            onPress={() => onReject(request.id)}
+            style={[styles.actionButton, { backgroundColor: '#F44336' }]}
+          >
+            Recusar
+          </Button>
+        </View>
+      </Card.Content>
+    </Card>
+  );
+};
     
     return (
       <PaperCard 

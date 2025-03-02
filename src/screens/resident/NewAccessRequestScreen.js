@@ -177,66 +177,68 @@ const NewAccessRequestScreen = ({ navigation }) => {
   };
 
   // Manipulador para envio do formulário
-  const handleSubmit = async () => {
-    if (!validateForm()) {
-      return;
-    }
+  // In NewAccessRequestScreen.js
+const handleSubmit = async () => {
+  if (!validateForm()) {
+    return;
+  }
 
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      Alert.alert('Erro', 'Usuário não autenticado');
-      return;
-    }
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    Alert.alert('Error', 'User not authenticated');
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
 
-    try {
-      // Salvar motorista, se marcado
-      if (saveDriver && !selectedDriver) {
-        try {
-          await FirestoreService.createDocument('saved_drivers', {
-            name: driverName,
-            vehiclePlate: vehiclePlate.toUpperCase(),
-            vehicleModel,
-            residentId: currentUser.uid,
-            type: 'saved_driver'
-          });
-        } catch (error) {
-          console.error('Erro ao salvar motorista:', error);
-          // Continuar mesmo se falhar ao salvar o motorista
-        }
-      }
-      
-      // Preparar dados da solicitação
-      const requestData = {
-        driverName,
-        vehiclePlate: vehiclePlate.toUpperCase(),
-        vehicleModel,
-        comment,
-        type: 'driver',
-        unit: userProfile?.unit || '',
-        block: userProfile?.block || '',
-        residentId: currentUser.uid,
-        driverId: selectedDriver?.type === 'driver' ? selectedDriver.id : null,
-        condoId: userProfile?.condoId || 'temp_condo_id'
-      };
-      
-      // Criar solicitação de acesso
-      await AccessService.createAccessRequest(requestData);
-      
-      // Exibir mensagem de sucesso
-      Alert.alert(
-        'Sucesso',
-        'Solicitação de acesso criada com sucesso',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-    } catch (error) {
-      console.error('Erro ao criar solicitação:', error);
-      Alert.alert('Erro', 'Não foi possível criar a solicitação de acesso');
-    } finally {
+  try {
+    // Fetch resident information to ensure we have the correct condominium data
+    const residentProfile = await FirestoreService.getDocument('residents', currentUser.uid);
+    
+    if (!residentProfile || !residentProfile.condoId) {
+      Alert.alert('Error', 'Your profile is not properly linked to a condominium. Please update your profile first.');
       setLoading(false);
+      return;
     }
-  };
+    
+    // Fetch condominium information
+    const condoData = await FirestoreService.getDocument('condos', residentProfile.condoId);
+    
+    // Prepare request data with complete information
+    const requestData = {
+      driverName,
+      vehiclePlate: vehiclePlate.toUpperCase(),
+      vehicleModel,
+      comment,
+      
+      // Important: Include condominium and location data
+      condoId: residentProfile.condoId,
+      condoName: condoData ? condoData.name : 'Unknown Condominium',
+      unit: residentProfile.unit || '',
+      block: residentProfile.block || '',
+      
+      // Type information
+      type: 'driver',
+      
+      // Metadata
+      timestamp: new Date().getTime()
+    };
+    
+    // Create access request
+    const result = await AccessService.createAccessRequest(requestData, 'resident');
+    
+    Alert.alert(
+      'Success',
+      'Access request created successfully',
+      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    );
+  } catch (error) {
+    console.error('Error creating request:', error);
+    Alert.alert('Error', 'Could not create the access request');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Filtrar motoristas para autocomplete
   const filterDrivers = (data, query) => {

@@ -151,6 +151,28 @@ const AccessDetailsScreen = ({ route, navigation }) => {
       setLoading(false);
     }
   };
+  const handleShareQRCodeWithDriver = async () => {
+    try {
+      if (!qrCodeData || !requestDetails) return;
+      
+      // Create a sharable message with relevant details
+      const message = 
+        `Access Request for ${requestDetails.condo?.name || 'Condominium'}\n` +
+        `Unit: ${requestDetails.unit || 'Not specified'}${requestDetails.block ? ` Block ${requestDetails.block}` : ''}\n` +
+        `Vehicle Plate: ${requestDetails.vehiclePlate || 'Not specified'}\n` +
+        `Valid until: ${timeLeft || 'a few minutes'}\n\n` +
+        `Show this QR code to the gatehouse when you arrive.`;
+      
+      // Share the message - ideally, we would generate a shareable image with the QR code
+      await Share.share({
+        message,
+        title: 'Condy Access Code',
+      });
+    } catch (error) {
+      console.error('Error sharing QR Code:', error);
+      Alert.alert('Error', 'Could not share the QR Code');
+    }
+  };
   
   // Gerar QR Code para solicitação
   const handleGenerateQRCode = async () => {

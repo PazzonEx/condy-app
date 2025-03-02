@@ -54,7 +54,10 @@ const DriverHomeScreen = ({ navigation }) => {
       const accessRequests = await AccessService.getAccessRequests(status);
       console.log('Solicitações carregadas:', accessRequests.length);
       console.log('Dados da primeira solicitação:', accessRequests.length > 0 ? JSON.stringify(accessRequests[0]) : 'Nenhuma');
-      
+      console.log("passei por aqui\n--------------------------------------------------------\n----------------------------------------------------\n---------------------------------");
+      console.log('Dados da primeira solicitação:', accessRequests.length > 0 ? JSON.stringify(accessRequests) : 'Nenhuma');
+      console.log("passei por aqui\n--\n--\n--\n--\n--\n-------");
+
       // Para cada solicitação, carregar informações do condomínio se não existirem
       const requestsWithCondoInfo = await Promise.all(
         accessRequests.map(async (request) => {

@@ -13,6 +13,8 @@ import ResidentProfileScreen from '../screens/resident/ResidentProfileScreen';
 import AccessDetailsScreen from '../screens/resident/AccessDetailsScreen';
 import ResidentSettingsScreen from '../screens/resident/ResidentSettingsScreen';
 
+import ResidentNotificationsScreen from '../screens/resident/ResidentNotificationsScreen';
+
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
@@ -41,6 +43,11 @@ const HomeStackNavigator = () => {
         component={ResidentHomeScreen} 
         options={{ title: 'Início' }}
       />
+      <HomeStack.Screen 
+          name="ResidentNotifications" 
+          component={ResidentNotificationsScreen} 
+          options={{ title: 'Access Requests' }}
+        />
       <HomeStack.Screen 
         name="NewAccessRequest" 
         component={NewAccessRequestScreen} 
@@ -145,6 +152,8 @@ const ResidentNavigator = () => {
         component={HomeStackNavigator} 
         options={{ tabBarLabel: 'Início' }}
       />
+      
+      
       <Tab.Screen 
         name="History" 
         component={HistoryStackNavigator} 

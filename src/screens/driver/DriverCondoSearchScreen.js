@@ -52,6 +52,112 @@ const DriverCondoSearchScreen = ({ navigation }) => {
   });
   const [requestLoading, setRequestLoading] = useState(false);
   // Carregar alguns condomínios ao montar o componente
+  // In DriverCondoSearchScreen.js
+const [showResidentSearch, setShowResidentSearch] = useState(false);
+const [residentSearchQuery, setResidentSearchQuery] = useState('');
+const [residents, setResidents] = useState([]);
+const [filteredResidents, setFilteredResidents] = useState([]);
+
+// Load residents for the selected condo
+useEffect(() => {
+  if (selectedCondo && selectedCondo.id) {
+    const loadResidents = async () => {
+      try {
+        // Query residents by condoId
+        const condoResidents = await FirestoreService.queryDocuments('residents', [
+          { field: 'condoId', operator: '==', value: selectedCondo.id }
+        ]);
+        setResidents(condoResidents);
+      } catch (error) {
+        console.error('Error loading residents:', error);
+      }
+    };
+    
+    loadResidents();
+  }
+}, [selectedCondo]);
+
+// Filter residents based on search
+useEffect(() => {
+  if (residentSearchQuery.trim() === '') {
+    setFilteredResidents([]);
+    return;
+  }
+  
+  const query = residentSearchQuery.toLowerCase();
+  const filtered = residents.filter(resident => {
+    const name = (resident.name || '').toLowerCase();
+    const unit = (resident.unit || '').toLowerCase();
+    const block = (resident.block || '').toLowerCase();
+    
+    return name.includes(query) || 
+           unit.includes(query) || 
+           block.includes(query) ||
+           `${unit}${block}`.includes(query);
+  });
+  
+  setFilteredResidents(filtered);
+}, [residentSearchQuery, residents]);
+
+// Resident search component
+const ResidentSearchInput = () => (
+  <View style={styles.residentSearchContainer}>
+    <Input
+      label="Search for Resident"
+      value={residentSearchQuery}
+      onChangeText={(text) => {
+        setResidentSearchQuery(text);
+        setShowResidentSearch(true);
+      }}
+      placeholder="Search by name, unit or block"
+      right={
+        <TouchableOpacity 
+          style={styles.searchButton}
+          onPress={() => setShowResidentSearch(!showResidentSearch)}
+        >
+          <MaterialCommunityIcons name="magnify" size={24} color={theme.colors.primary} />
+        </TouchableOpacity>
+      }
+    />
+    
+    {showResidentSearch && filteredResidents.length > 0 && (
+      <Card style={styles.dropdownCard}>
+        <ScrollView style={styles.dropdownList} nestedScrollEnabled={true}>
+          {filteredResidents.map(resident => (
+            <TouchableOpacity
+              key={resident.id}
+              style={styles.dropdownItem}
+              onPress={() => {
+                // Set resident details to form
+                setRequestDetails(prev => ({
+                  ...prev,
+                  residentName: resident.name,
+                  unit: resident.unit,
+                  block: resident.block || ''
+                }));
+                setShowResidentSearch(false);
+                setResidentSearchQuery('');
+              }}
+            >
+              <MaterialCommunityIcons 
+                name="account" 
+                size={20} 
+                color="#555" 
+                style={styles.dropdownIcon} 
+              />
+              <View>
+                <Text style={styles.dropdownItemText}>{resident.name}</Text>
+                <Text style={styles.dropdownItemSubtext}>
+                  Unit: {resident.unit}{resident.block ? ` • Block ${resident.block}` : ''}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Card>
+    )}
+  </View>
+);
 
   useEffect(() => {
     const loadCondos = async () => {
@@ -144,62 +250,60 @@ const searchCondos = async () => {
 };
 
     // Enviar solicitação de acesso
-    const handleSubmitAccessRequest = async () => {
-      // Validações
-      if (!selectedCondo) {
-        Alert.alert('Erro', 'Selecione um condomínio');
-        return;
-      }
+// Em DriverCondoSearchScreen.js
+const handleSubmitAccessRequest = async () => {
+  try {
+    setRequestLoading(true);
+    
+    // Validações
+    if (!selectedCondo) {
+      Alert.alert('Erro', 'Selecione um condomínio');
+      setRequestLoading(false);
+      return;
+    }
   
-      if (!requestDetails.unit.trim()) {
-        Alert.alert('Erro', 'Informe a unidade');
-        return;
-      }
-  
-      try {
-        setRequestLoading(true);
-  
-        // Preparar dados da solicitação com informações claras do condomínio
-        const requestData = {
-          driverId: userProfile.uid,
-          driverName: userProfile.displayName,
-          vehiclePlate: userProfile.vehiclePlate || '',
-          vehicleModel: userProfile.vehicleModel || '',
-          condoId: selectedCondo.id,
-          condoName: selectedCondo.name, // Incluir nome do condomínio
-          condoAddress: selectedCondo.address, // Incluir endereço do condomínio
-          unit: requestDetails.unit,
-          block: requestDetails.block,
-          comment: requestDetails.comment,
-          status: 'pending',
-          type: 'driver'
-        };
-  
-        await AccessService.createAccessRequest(requestData);
-  
-        Alert.alert(
-          'Sucesso', 
-          `Solicitação de acesso enviada para o condomínio ${selectedCondo.name}!`,
-          [{ 
-            text: 'OK', 
-            onPress: () => {
-              setSelectedCondo(null);
-              setRequestDetails({
-                unit: '',
-                block: '',
-                comment: ''
-              });
-              navigation.navigate('Home'); // Retornar à tela principal
-            } 
-          }]
-        );
-      } catch (error) {
-        console.error('Erro ao criar solicitação:', error);
-        Alert.alert('Erro', 'Não foi possível enviar a solicitação');
-      } finally {
-        setRequestLoading(false);
-      }
+    if (!requestDetails.unit.trim()) {
+      Alert.alert('Erro', 'Informe a unidade');
+      setRequestLoading(false);
+      return;
+    }
+    
+    // Preparar dados da solicitação
+    const requestData = {
+      condoId: selectedCondo.id,
+      condoName: selectedCondo.name,
+      unit: requestDetails.unit.trim(),
+      block: requestDetails.block.trim(),
+      comment: requestDetails.comment,
+      type: 'driver'
     };
+    
+    // Enviar solicitação
+    await AccessService.createAccessRequest(requestData, 'driver');
+    
+    Alert.alert(
+      'Sucesso', 
+      `Solicitação de acesso enviada para o morador da unidade ${requestDetails.unit}${requestDetails.block ? ` Bloco ${requestDetails.block}` : ''}!`,
+      [{ 
+        text: 'OK', 
+        onPress: () => {
+          setSelectedCondo(null);
+          setRequestDetails({
+            unit: '',
+            block: '',
+            comment: ''
+          });
+          navigation.navigate('Home');
+        } 
+      }]
+    );
+  } catch (error) {
+    console.error('Erro ao criar solicitação:', error);
+    Alert.alert('Erro', 'Não foi possível enviar a solicitação: ' + error.message);
+  } finally {
+    setRequestLoading(false);
+  }
+};
 
   // Renderizar cartão de condomínio
   const renderCondoCard = (condo) => (
@@ -301,6 +405,13 @@ const searchCondos = async () => {
             subtitle="Preencha os detalhes da sua entrada"
           />
           <Card.Content>
+          <Input
+              label="Nome moradore"
+              value={requestDetails.residentName}
+              onChangeText={(text) => setRequestDetails(prev => ({...prev, residentName: text}))}
+              placeholder="Name of resident to visit"
+              autoCapitalize="words"
+            />
             <Input
               label="Unidade"
               value={requestDetails.unit}

@@ -97,34 +97,57 @@ const CondoAccessDetailsScreen = ({ route, navigation }) => {
   };
   
   // Aprovar solicitação
-  const handleApproveRequest = () => {
-    Alert.alert(
-      'Aprovar Solicitação',
-      'Tem certeza que deseja aprovar esta solicitação de acesso?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Aprovar',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await AccessService.updateAccessRequestStatus(requestId, 'authorized');
-              Alert.alert('Sucesso', 'Solicitação aprovada com sucesso');
-              // Atualizar detalhes
-              loadRequestDetails();
-            } catch (error) {
-              console.error('Erro ao aprovar solicitação:', error);
-              Alert.alert('Erro', 'Não foi possível aprovar a solicitação');
-              setLoading(false);
+ // Add this function to CondoAccessDetailsScreen.js
+const handleApproveRequest = async () => {
+  Alert.alert(
+    'Approve Request',
+    'Are you sure you want to approve this access request?',
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Approve',
+        onPress: async () => {
+          try {
+            setLoading(true);
+            
+            // Determine correct target status
+            let targetStatus = 'authorized';
+            
+            // If this is a driver-initiated request requiring approval flow
+            if (requestDetails.statusFlow && requestDetails.currentApprovalStage === 'gatehouse') {
+              // Ensure this request has already been approved by resident
+              if (!requestDetails.residentApproved) {
+                Alert.alert('Error', 'This request needs resident approval first');
+                setLoading(false);
+                return;
+              }
+              
+              // Update with gatehouse approval
+              await AccessService.updateAccessRequestStatus(requestId, targetStatus, {
+                gatehouseApproved: true,
+                gatehouseApprovedAt: serverTimestamp(),
+                gatehouseApprovedBy: auth.currentUser.uid
+              });
+            } else {
+              // Standard approval for resident-initiated requests
+              await AccessService.updateAccessRequestStatus(requestId, targetStatus);
             }
-          },
+            
+            Alert.alert('Success', 'Request approved successfully');
+            loadRequestDetails();
+          } catch (error) {
+            console.error('Error approving request:', error);
+            Alert.alert('Error', 'Could not approve the request');
+            setLoading(false);
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
   
   // Negar solicitação
   const handleDenyRequest = () => {
