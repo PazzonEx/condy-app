@@ -11,6 +11,8 @@ import DriverProfileScreen from '../screens/driver/DriverProfileScreen';
 import DriverSettingsScreen from '../screens/driver/DriverSettingsScreen';
 import DriverCondoSearchScreen from '../screens/driver/DriverCondoSearchScreen';
 import DriverQRCodeScreen from '../screens/driver/DriverQRCodeScreen';
+import SubscriptionPlansScreen from '../screens/shared/SubscriptionPlansScreen';
+
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
@@ -39,6 +41,13 @@ const HomeStackNavigator = () => {
         component={DriverHomeScreen} 
         options={{ title: 'Solicitações' }}
       />
+      <HomeStack.Screen 
+        name="DriverSubscription" 
+        component={SubscriptionPlansScreen} 
+        initialParams={{ userType: 'driver' }}
+        options={{ title: 'Planos para Motoristas' }}
+      />
+      
       <HomeStack.Screen 
         name="DriverAccessDetails" 
         component={DriverAccessDetailsScreen} 

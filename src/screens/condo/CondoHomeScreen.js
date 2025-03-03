@@ -1,91 +1,155 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity } from 'react-native';
-import { Text, useTheme, ActivityIndicator, Searchbar, Badge, Divider, Card as PaperCard, FAB } from 'react-native-paper';
+import { View, StyleSheet, FlatList, RefreshControl, Image, TouchableOpacity, Alert } from 'react-native';
+import { Text, FAB, Chip, ActivityIndicator, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
-// Hooks personalizados
+// Hooks e serviços
 import { useAuth } from '../../hooks/useAuth';
-
-// Componentes personalizados
-import Button from '../../components/Button';
-
-// Serviços
 import AccessService from '../../services/access.service';
 
-// Utilitários
-import { formatDate } from '../../utils/format';
+// Cores padrão (caso o objeto COLORS não esteja disponível)
+const defaultColors = {
+  primary: '#1E88E5',
+  primaryLight: '#E3F2FD',
+  success: '#4CAF50',
+  danger: '#F44336',
+  warning: '#FF9800',
+  info: '#2196F3',
+  grey: {
+    400: '#BDBDBD',
+    500: '#9E9E9E',
+    600: '#757575'
+  },
+  white: '#FFFFFF',
+  dark: '#212121',
+  light: '#F5F5F5'
+};
+
+// Usar as cores do tema ou as cores padrão
+const getColor = (colorPath) => {
+  const parts = colorPath.split('.');
+  let current = defaultColors;
+  
+  for (const part of parts) {
+    if (current[part] === undefined) {
+      return defaultColors[parts[0]] || '#1E88E5';
+    }
+    current = current[part];
+  }
+  
+  return current;
+};
 
 const CondoHomeScreen = ({ navigation }) => {
-  const theme = useTheme();
-  const { userProfile, currentUser } = useAuth();
+  const { userProfile } = useAuth();
+  
+  // Estados
   const [requests, setRequests] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('pending'); // 'pending', 'authorized', 'completed', 'all'
+  const [filter, setFilter] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Carregar solicitações quando a tela receber foco
+  const [quickStatsVisible, setQuickStatsVisible] = useState(true);
+  const [quickStats, setQuickStats] = useState({
+    pending: 0,
+    authorized: 0,
+    today: 0
+  });
+  
+  // Carregar solicitações
   useFocusEffect(
     useCallback(() => {
       loadRequests();
     }, [filter])
   );
-
-  // Filtrar solicitações com base na pesquisa
+  
+  // Efeito para filtrar com base na pesquisa
   useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredRequests(requests);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = requests.filter(
-        req => 
-          req.driverName?.toLowerCase().includes(query) ||
-          req.vehiclePlate?.toLowerCase().includes(query) ||
-          req.unit?.toString().includes(query) ||
-          req.block?.toLowerCase().includes(query)
-      );
-      setFilteredRequests(filtered);
-    }
+    filterRequestsBySearch();
   }, [searchQuery, requests]);
-
-  // Função para carregar solicitações
-  const loadRequests = async () => {
-
-    if (refreshing) return;
+  
+  // Função para filtrar solicitações por termo de busca
+  const filterRequestsBySearch = () => {
+    if (!searchQuery.trim()) {
+      setFilteredRequests(requests);
+      return;
+    }
     
+    const query = searchQuery.toLowerCase();
+    const filtered = requests.filter(req => 
+      req.driverName?.toLowerCase().includes(query) ||
+      req.vehiclePlate?.toLowerCase().includes(query) ||
+      req.unit?.toString().includes(query) ||
+      req.block?.toLowerCase().includes(query) ||
+      req.residentName?.toLowerCase().includes(query)
+    );
+    
+    setFilteredRequests(filtered);
+  };
+  
+  // Carregar dados do servidor
+  const loadRequests = async () => {
     try {
       setLoading(true);
       setError(null);
       
+      // Buscar estatísticas rápidas (implementação simplificada)
+      let todayCount = 0;
+      let pendingCount = 0;
+      let authorizedCount = 0;
+      
       // Definir condições baseadas no filtro
-      let status = null;
-if (filter === 'pending') {
-  status = ['pending']; // Apenas solicitações já aprovadas pelo morador e aguardando a portaria
-} else if (filter === 'authorized') {
-  status = ['authorized', 'arrived'];
-} else if (filter === 'completed') {
-  status = ['completed', 'entered', 'denied', 'canceled'];
-}
-
-// Excluir especificamente solicitações que ainda aguardam o morador
-const conditions = [
-  { field: 'condoId', operator: '==', value: currentUser.uid }
-];
-
-if (status) {
-  conditions.push({ field: 'status', operator: 'in', value: status });
-} else {
-  // Se for "all", ainda excluir explicitamente "pending_resident"
-  conditions.push({ field: 'status', operator: '!=', value: 'pending_resident' });
-}
+      let statusFilter = null;
+      
+      if (filter === 'pending') {
+        statusFilter = ['pending'];
+      } else if (filter === 'authorized') {
+        statusFilter = ['authorized', 'arrived'];
+      } else if (filter === 'completed') {
+        statusFilter = ['completed', 'entered', 'denied', 'denied_by_resident', 'canceled'];
+      }
       
       // Buscar solicitações
-      const accessRequests = await AccessService.getAccessRequests(status);
+      const accessRequests = await AccessService.getAccessRequests(statusFilter);
+      
+      // Calcular estatísticas com base nas solicitações
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      accessRequests.forEach(req => {
+        // Contar solicitações de hoje
+        if (req.createdAt && new Date(req.createdAt) >= today) {
+          todayCount++;
+        }
+        
+        // Contar por status
+        if (req.status === 'pending') {
+          pendingCount++;
+        } else if (req.status === 'authorized' || req.status === 'arrived') {
+          authorizedCount++;
+        }
+      });
+      
+      // Atualizar estatísticas
+      setQuickStats({
+        pending: pendingCount,
+        authorized: authorizedCount,
+        today: todayCount
+      });
+      
+      // Atualizar lista de solicitações
       setRequests(accessRequests);
-      setFilteredRequests(accessRequests);
+      
+      // Aplicar filtro de pesquisa
+      if (searchQuery.trim()) {
+        filterRequestsBySearch();
+      } else {
+        setFilteredRequests(accessRequests);
+      }
+      
     } catch (error) {
       console.error('Erro ao carregar solicitações:', error);
       setError('Não foi possível carregar as solicitações');
@@ -94,288 +158,167 @@ if (status) {
       setRefreshing(false);
     }
   };
-
-  // Função para atualizar a lista ao puxar para baixo
+  
+  // Atualizar puxando a tela para baixo
   const handleRefresh = () => {
     setRefreshing(true);
     loadRequests();
   };
-
-  // Função para aprovar uma solicitação
-  const handleApproveRequest = (requestId) => {
-    Alert.alert(
-      'Aprovar Solicitação',
-      'Tem certeza que deseja aprovar esta solicitação de acesso?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Aprovar',
-          onPress: async () => {
-            try {
-              await AccessService.updateAccessRequestStatus(requestId, 'authorized');
-              Alert.alert('Sucesso', 'Solicitação aprovada com sucesso');
-              // Atualizar a lista
-              loadRequests();
-            } catch (error) {
-              console.error('Erro ao aprovar solicitação:', error);
-              Alert.alert('Erro', 'Não foi possível aprovar a solicitação');
-            }
-          },
-        },
-      ]
-    );
+  
+  // Aprovar uma solicitação
+  const handleApproveRequest = async (requestId) => {
+    try {
+      await AccessService.updateAccessRequestStatus(requestId, 'authorized');
+      Alert.alert('Sucesso', 'Solicitação aprovada com sucesso');
+      // Atualizar a lista
+      loadRequests();
+    } catch (error) {
+      console.error('Erro ao aprovar solicitação:', error);
+      Alert.alert('Erro', 'Não foi possível aprovar a solicitação');
+    }
   };
-
-  // Função para negar uma solicitação
-  const handleDenyRequest = (requestId) => {
-    Alert.alert(
-      'Negar Solicitação',
-      'Tem certeza que deseja negar esta solicitação de acesso?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Negar',
-          onPress: async () => {
-            try {
-              // Pedir motivo da negação (opcional)
-              // Pode ser implementado com um modal de input
-              await AccessService.updateAccessRequestStatus(requestId, 'denied');
-              Alert.alert('Sucesso', 'Solicitação negada com sucesso');
-              // Atualizar a lista
-              loadRequests();
-            } catch (error) {
-              console.error('Erro ao negar solicitação:', error);
-              Alert.alert('Erro', 'Não foi possível negar a solicitação');
-            }
-          },
-        },
-      ]
-    );
+  
+  // Negar uma solicitação
+  const handleDenyRequest = async (requestId) => {
+    try {
+      await AccessService.updateAccessRequestStatus(requestId, 'denied');
+      Alert.alert('Sucesso', 'Solicitação negada com sucesso');
+      // Atualizar a lista
+      loadRequests();
+    } catch (error) {
+      console.error('Erro ao negar solicitação:', error);
+      Alert.alert('Erro', 'Não foi possível negar a solicitação');
+    }
   };
-
-  // Renderizar um item da lista de solicitações
-  const renderRequestItem = ({ item }) => {
-    // Informações de status e cores
-    const statusInfo = {
-      pending: {
-        label: 'Pendente',
-        color: theme.colors.accent,
-        icon: 'clock-outline',
-      },
-      pending_resident: {
-        label: 'Aguardando Morador',
-        color: '#FF9800', // Laranja
-        icon: 'account-clock',
-        description: 'Aguardando aprovação do morador'
-      },
-      authorized: {
-        label: 'Autorizado',
-        color: '#4CAF50',
-        icon: 'check-circle-outline',
-      },
-      denied: {
-        label: 'Negado',
-        color: theme.colors.error,
-        icon: 'close-circle-outline',
-      },
-      arrived: {
-        label: 'Na portaria',
-        color: '#2196F3',
-        icon: 'map-marker',
-      },
-      entered: {
-        label: 'Entrou',
-        color: '#9C27B0',
-        icon: 'login',
-      },
-      completed: {
-        label: 'Concluído',
-        color: '#4CAF50',
-        icon: 'check-circle',
-      },
-      canceled: {
-        label: 'Cancelado',
-        color: '#757575',
-        icon: 'cancel',
-      }
-    };
-    
-    const status = statusInfo[item.status] || {
-      label: 'Desconhecido',
-      color: '#757575',
-      icon: 'help-circle-outline',
-    };
-    
-    // Formatar data
-    const createdDate = formatDate(item.createdAt, { 
-      showTime: true, 
-      dateFormat: 'dd/MM/yyyy' 
-    });
+  
+  // Ir para detalhes da solicitação
+  const handleRequestDetails = (requestId) => {
+    navigation.navigate('CondoAccessDetails', { requestId });
+  };
+  
+  // Marcar motorista como chegado
+  const handleMarkAsArrived = async (requestId) => {
+    try {
+      await AccessService.updateAccessRequestStatus(requestId, 'arrived');
+      Alert.alert('Sucesso', 'Motorista marcado como chegado');
+      loadRequests();
+    } catch (error) {
+      console.error('Erro ao marcar chegada:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar o status');
+    }
+  };
+  
+  // Marcar motorista como entrou
+  const handleMarkAsEntered = async (requestId) => {
+    try {
+      await AccessService.updateAccessRequestStatus(requestId, 'entered');
+      Alert.alert('Sucesso', 'Motorista marcado como entrou');
+      loadRequests();
+    } catch (error) {
+      console.error('Erro ao marcar entrada:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar o status');
+    }
+  };
+  
+  // Função para alternar visibilidade das estatísticas rápidas
+  const toggleQuickStats = () => {
+    setQuickStatsVisible(!quickStatsVisible);
+  };
+  
+  // Renderizar seção de estatísticas rápidas
+  const renderQuickStats = () => {
+    if (!quickStatsVisible) {
+      return (
+        <TouchableOpacity 
+          style={styles.expandButton}
+          onPress={toggleQuickStats}
+        >
+          <MaterialCommunityIcons name="chevron-down" size={24} color={getColor('grey.600')} />
+          <Text style={styles.expandButtonText}>Mostrar estatísticas</Text>
+        </TouchableOpacity>
+      );
+    }
     
     return (
-      <PaperCard 
-        style={styles.requestCard}
-        onPress={() => navigation.navigate('CondoAccessDetails', { requestId: item.id })}
-      >
-        <View style={styles.cardHeader}>
-          <View style={styles.statusContainer}>
-            <MaterialCommunityIcons name={status.icon} size={24} color={status.color} />
-            <Text style={[styles.statusText, { color: status.color }]}>
-              {status.label}
-            </Text>
-          </View>
-          <Text style={styles.dateText}>{createdDate}</Text>
+      <View style={styles.quickStatsContainer}>
+        <View style={styles.quickStatsTitleRow}>
+          <Text style={styles.quickStatsTitle}>Resumo do Dia</Text>
+          <TouchableOpacity onPress={toggleQuickStats}>
+            <MaterialCommunityIcons name="chevron-up" size={24} color={getColor('grey.600')} />
+          </TouchableOpacity>
         </View>
         
-        <Divider style={styles.divider} />
-        
-        <View style={styles.cardContent}>
-          <View style={styles.driverInfo}>
-            <MaterialCommunityIcons name="account" size={24} color="#555" style={styles.icon} />
-            <View style={styles.driverDetails}>
-              <Text style={styles.driverName}>{item.driverName || 'Não informado'}</Text>
-              <Text style={styles.infoText}>
-                {item.vehiclePlate ? `Placa: ${item.vehiclePlate}` : 'Sem placa'}
-              </Text>
-            </View>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{quickStats.pending}</Text>
+            <Text style={styles.statLabel}>Pendentes</Text>
           </View>
           
-          <View style={styles.unitInfo}>
-            <MaterialCommunityIcons name="home" size={20} color="#555" style={styles.icon} />
-            <Text style={styles.infoText}>
-              Unidade: {item.unit || 'N/A'}
-              {item.block ? ` • Bloco ${item.block}` : ''}
-            </Text>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{quickStats.authorized}</Text>
+            <Text style={styles.statLabel}>Autorizados</Text>
+          </View>
+          
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{quickStats.today}</Text>
+            <Text style={styles.statLabel}>Hoje</Text>
           </View>
         </View>
         
-        <PaperCard.Actions style={styles.cardActions}>
-          {item.status === 'pending' && (
-            <>
-              <Button 
-                mode="contained" 
-                compact
-                onPress={() => handleApproveRequest(item.id)}
-                style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
-                labelStyle={styles.actionButtonLabel}
-              >
-                Aprovar
-              </Button>
-              <Button 
-                mode="contained" 
-                compact
-                onPress={() => handleDenyRequest(item.id)}
-                style={[styles.actionButton, { backgroundColor: theme.colors.error }]}
-                labelStyle={styles.actionButtonLabel}
-              >
-                Negar
-              </Button>
-            </>
-          )}
-          
-          <Button 
-            mode="text" 
-            compact
-            onPress={() => navigation.navigate('CondoAccessDetails', { requestId: item.id })}
-            labelStyle={styles.actionButtonLabel}
-          >
-            Detalhes
-          </Button>
-        </PaperCard.Actions>
-      </PaperCard>
+        <TouchableOpacity 
+          style={styles.dashboardButton}
+          onPress={() => navigation.navigate('CondoDashboard')}
+        >
+          <MaterialCommunityIcons name="chart-bar" size={20} color={getColor('primary')} />
+          <Text style={styles.dashboardButtonText}>Dashboard Completo</Text>
+        </TouchableOpacity>
+      </View>
     );
   };
-
+  
   // Renderizar filtros
   const renderFilters = () => (
     <View style={styles.filtersContainer}>
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'pending' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
+      <Chip
+        selected={filter === 'pending'}
         onPress={() => setFilter('pending')}
+        style={styles.filterChip}
       >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'pending' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
-        >
-          Pendentes
-        </Text>
-        {requests.filter(req => req.status === 'pending').length > 0 && (
-          <Badge style={[styles.filterBadge, { backgroundColor: theme.colors.accent }]}>
-            {requests.filter(req => req.status === 'pending').length}
-          </Badge>
-        )}
-      </TouchableOpacity>
+        Pendentes {quickStats.pending > 0 ? `(${quickStats.pending})` : ''}
+      </Chip>
       
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'authorized' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
+      <Chip
+        selected={filter === 'authorized'}
         onPress={() => setFilter('authorized')}
+        style={styles.filterChip}
       >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'authorized' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
-        >
-          Autorizados
-        </Text>
-      </TouchableOpacity>
+        Autorizados
+      </Chip>
       
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'completed' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
+      <Chip
+        selected={filter === 'completed'}
         onPress={() => setFilter('completed')}
+        style={styles.filterChip}
       >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'completed' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
-        >
-          Concluídos
-        </Text>
-      </TouchableOpacity>
+        Concluídos
+      </Chip>
       
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'all' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
+      <Chip
+        selected={filter === 'all'}
         onPress={() => setFilter('all')}
+        style={styles.filterChip}
       >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'all' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
-        >
-          Todos
-        </Text>
-      </TouchableOpacity>
+        Todos
+      </Chip>
     </View>
   );
-
-  // Renderizar mensagem de lista vazia
-  const renderEmptyList = () => (
+  
+  // Renderizar estado vazio
+  const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <MaterialCommunityIcons name="clipboard-text-outline" size={64} color="#BDBDBD" />
+      <MaterialCommunityIcons name="clipboard-text-outline" size={64} color={getColor('grey.400')} />
       <Text style={styles.emptyTitle}>Nenhuma solicitação encontrada</Text>
-      <Text style={styles.emptyText}>
+      <Text style={styles.emptyDescription}>
         {filter === 'pending'
           ? 'Não há solicitações pendentes para aprovação'
           : filter === 'authorized'
@@ -386,30 +329,82 @@ if (status) {
       </Text>
     </View>
   );
-
+  
+  // Função para obter cor baseada no status
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending': return getColor('warning');
+      case 'authorized': return getColor('success');
+      case 'arrived': return getColor('info');
+      case 'entered': return '#9C27B0'; // Roxo
+      case 'completed': return getColor('success');
+      case 'denied': case 'denied_by_resident': return getColor('danger');
+      case 'canceled': return getColor('grey.600');
+      default: return getColor('grey.600');
+    }
+  };
+  
+  // Função para obter ícone baseado no status
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'pending': return 'clock-outline';
+      case 'authorized': return 'check-circle-outline';
+      case 'arrived': return 'map-marker';
+      case 'entered': return 'login';
+      case 'completed': return 'check-circle';
+      case 'denied': case 'denied_by_resident': return 'close-circle-outline';
+      case 'canceled': return 'cancel';
+      default: return 'help-circle-outline';
+    }
+  };
+  
+  // Função para obter texto de status
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'pending': return 'Pendente';
+      case 'pending_resident': return 'Aguardando Morador';
+      case 'authorized': return 'Autorizado';
+      case 'arrived': return 'Na portaria';
+      case 'entered': return 'Entrou';
+      case 'completed': return 'Concluído';
+      case 'denied': return 'Negado';
+      case 'denied_by_resident': return 'Negado pelo Morador';
+      case 'canceled': return 'Cancelado';
+      default: return 'Desconhecido';
+    }
+  };
+  
   return (
     <View style={styles.container}>
       {/* Cabeçalho */}
-      <View style={styles.headerActions}>
-          <Button
-            mode="outlined"
-            icon="chart-bar"
-            onPress={() => navigation.navigate('CondoDashboard')}
-            style={styles.dashboardButton}
-          >
-            Dashboard
-          </Button>
-        </View>
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.greeting}>
-            Olá, {userProfile?.displayName?.split(' ')[0] || 'Condomínio'}
+            Olá, {userProfile?.displayName?.split(' ')[0] || 'Portaria'}
           </Text>
           <Text style={styles.subtitle}>
-            Gerencie as solicitações de acesso
+            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </Text>
         </View>
+        <TouchableOpacity 
+          style={styles.profileAvatar} 
+          onPress={() => navigation.navigate('CondoProfile')}
+        >
+          {userProfile?.photoURL ? (
+            <Image 
+              source={{ uri: userProfile.photoURL }} 
+              style={styles.avatarImage} 
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <MaterialCommunityIcons name="office-building" size={24} color={getColor('white')} />
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
+      
+      {/* Estatísticas rápidas */}
+      {renderQuickStats()}
       
       {/* Barra de pesquisa */}
       <View style={styles.searchBarContainer}>
@@ -426,35 +421,132 @@ if (status) {
       {/* Filtros */}
       {renderFilters()}
       
+      {/* Mensagem de erro */}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+      
       {/* Lista de solicitações */}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <ActivityIndicator size="large" color={getColor('primary')} />
           <Text style={styles.loadingText}>Carregando solicitações...</Text>
         </View>
       ) : (
         <FlatList
           data={filteredRequests}
-          renderItem={renderRequestItem}
+          renderItem={({item}) => (
+            <View style={[
+              styles.requestCard,
+              item.status === 'pending' && styles.pendingRequestCard
+            ]}>
+              <View style={styles.requestHeader}>
+                <View style={styles.statusContainer}>
+                  <MaterialCommunityIcons 
+                    name={getStatusIcon(item.status)} 
+                    size={24} 
+                    color={getStatusColor(item.status)} 
+                  />
+                  <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+                    {getStatusText(item.status)}
+                  </Text>
+                </View>
+                <Text style={styles.dateText}>
+                  {item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR') : ''}
+                </Text>
+              </View>
+
+              <View style={styles.requestContent}>
+                <View style={styles.driverInfo}>
+                  <MaterialCommunityIcons name="account" size={20} color={getColor('grey.600')} style={styles.icon} />
+                  <Text style={styles.driverName}>{item.driverName || 'Não informado'}</Text>
+                  {item.vehiclePlate && (
+                    <Text style={styles.plateInfo}>
+                      <MaterialCommunityIcons name="car" size={16} color={getColor('grey.600')} />
+                      {' '}{item.vehiclePlate}
+                    </Text>
+                  )}
+                </View>
+                
+                <View style={styles.unitInfo}>
+                  <MaterialCommunityIcons name="home" size={20} color={getColor('grey.600')} style={styles.icon} />
+                  <Text style={styles.infoText}>
+                    Unidade: {item.unit || 'N/A'}
+                    {item.block ? ` • Bloco ${item.block}` : ''}
+                  </Text>
+                  <Text style={styles.residentName}>
+                    {item.residentName || 'Morador não identificado'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.requestActions}>
+                {item.status === 'pending' && (
+                  <>
+                    <TouchableOpacity 
+                      style={[styles.actionButton, styles.denyButton]}
+                      onPress={() => handleDenyRequest(item.id)}
+                    >
+                      <Text style={styles.denyButtonText}>Negar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.actionButton, styles.approveButton]}
+                      onPress={() => handleApproveRequest(item.id)}
+                    >
+                      <Text style={styles.approveButtonText}>Aprovar</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                
+                {item.status === 'authorized' && (
+                  <TouchableOpacity 
+                    style={[styles.actionButton, styles.arrivedButton]}
+                    onPress={() => handleMarkAsArrived(item.id)}
+                  >
+                    <Text style={styles.arrivedButtonText}>Marcar como Chegou</Text>
+                  </TouchableOpacity>
+                )}
+                
+                {item.status === 'arrived' && (
+                  <TouchableOpacity 
+                    style={[styles.actionButton, styles.enteredButton]}
+                    onPress={() => handleMarkAsEntered(item.id)}
+                  >
+                    <Text style={styles.enteredButtonText}>Marcar como Entrou</Text>
+                  </TouchableOpacity>
+                )}
+                
+                <TouchableOpacity 
+                  style={styles.detailsButton}
+                  onPress={() => handleRequestDetails(item.id)}
+                >
+                  <Text style={styles.detailsButtonText}>Detalhes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              colors={[theme.colors.primary]}
+              colors={[getColor('primary')]}
             />
           }
-          ListEmptyComponent={renderEmptyList}
+          ListEmptyComponent={renderEmptyState}
           showsVerticalScrollIndicator={false}
         />
       )}
       
-      {/* Botão para escanear QR Code */}
+      {/* Botão flutuante para escanear QR Code */}
       <FAB
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        style={styles.fab}
         icon="qrcode-scan"
         onPress={() => navigation.navigate('CondoQRScanner')}
+        label="Escanear QR"
       />
     </View>
   );
@@ -463,77 +555,200 @@ if (status) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F5F5F5',
   },
   header: {
-    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    paddingVertical: 20,
+    backgroundColor: '#FFFFFF',
   },
   headerContent: {
-    flexDirection: 'column',
+    flex: 1,
   },
   greeting: {
     fontSize: 22,
     fontWeight: 'bold',
+    color: '#212121',
   },
   subtitle: {
     fontSize: 14,
     color: '#757575',
     marginTop: 4,
   },
-  searchBarContainer: {
-    padding: 12,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  profileAvatar: {
+    marginLeft: 16,
   },
-  searchBar: {
-    elevation: 0,
-    backgroundColor: '#f0f0f0',
+  avatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
-  filtersContainer: {
-    flexDirection: 'row',
+  avatarPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1E88E5',
+  },
+  quickStatsContainer: {
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'white',
     marginBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    flexWrap: 'wrap',
+    borderBottomColor: '#E0E0E0',
   },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  filterText: {
-    fontSize: 14,
-    color: '#757575',
-  },
-  filterBadge: {
-    marginLeft: 4,
-    
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 80, // Espaço para o FAB
-  },
-  requestCard: {
-    marginBottom: 16,
-    borderRadius: 8,
-  },
-  cardHeader: {
+  quickStatsTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
+  },
+  quickStatsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#212121',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1E88E5',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#757575',
+    marginTop: 4,
+  },
+  dashboardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#1E88E5',
+    borderRadius: 4,
+  },
+  dashboardButtonText: {
+    marginLeft: 8,
+    color: '#1E88E5',
+    fontWeight: '500',
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  expandButtonText: {
+    marginLeft: 8,
+    color: '#757575',
+    fontSize: 14,
+  },
+  searchBarContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  searchBar: {
+    elevation: 0,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    height: 40,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  filterChip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  errorContainer: {
     padding: 16,
+    backgroundColor: '#FFEBEE',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#B71C1C',
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#757575',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+    color: '#212121',
+  },
+  emptyDescription: {
+    fontSize: 14,
+    color: '#757575',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  requestCard: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
+    elevation: 2,
+  },
+  pendingRequestCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
   },
   statusContainer: {
     flexDirection: 'row',
@@ -548,86 +763,107 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#757575',
   },
-  divider: {
-    marginVertical: 0,
-  },
-  cardContent: {
-    padding: 16,
+  requestContent: {
+    padding: 12,
   },
   driverInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  driverDetails: {
-    flex: 1,
+    marginBottom: 8,
   },
   driverName: {
     fontSize: 16,
     fontWeight: 'bold',
+    flex: 1,
+  },
+  plateInfo: {
+    fontSize: 14,
+    color: '#616161',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   unitInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   icon: {
-    marginRight: 12,
+    marginRight: 8,
   },
   infoText: {
     fontSize: 14,
-    color: '#555',
+    color: '#616161',
+    marginRight: 8,
   },
-  cardActions: {
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+  residentName: {
+    fontSize: 14,
+    color: '#616161',
+    fontStyle: 'italic',
+  },
+  requestActions: {
+    flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#EEEEEE',
   },
   actionButton: {
-    marginHorizontal: 4,
-    marginVertical: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginLeft: 8,
   },
-  headerActions: {
-    marginTop: 10,
+  approveButton: {
+    backgroundColor: '#4CAF50',
   },
-  dashboardButton: {
-    alignSelf: 'flex-start',
-  },
-  actionButtonLabel: {
-    fontSize: 12,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: '#757575',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    minHeight: 300,
-  },
-  emptyTitle: {
-    fontSize: 18,
+  approveButtonText: {
+    color: '#FFFFFF',
     fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
   },
-  emptyText: {
-    fontSize: 14,
-    color: '#757575',
-    textAlign: 'center',
-    marginBottom: 20,
+  denyButton: {
+    backgroundColor: '#F44336',
+  },
+  denyButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  arrivedButton: {
+    backgroundColor: '#2196F3',
+  },
+  arrivedButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  enteredButton: {
+    backgroundColor: '#9C27B0',
+  },
+  enteredButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  detailsButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  detailsButtonText: {
+    color: '#1E88E5',
+    fontWeight: '500',
+  },
+  listContainer: {
+    padding: 0,
+    paddingTop: 8,
+    paddingBottom: 80,
+    flexGrow: 1,
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
     bottom: 0,
+    backgroundColor: '#1E88E5',
   },
 });
 

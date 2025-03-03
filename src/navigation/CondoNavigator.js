@@ -91,6 +91,11 @@ const RequestsStackNavigator = () => {
         component={CondoRequestsScreen} 
         options={{ title: 'Solicitações' }}
       />
+       <RequestsStack.Screen 
+        name="CondoQRScanner" 
+        component={CondoQRScannerScreen} 
+        options={{ title: 'Escanear QR Code' }}
+      />
       <RequestsStack.Screen 
         name="CondoAccessDetails" 
         component={CondoAccessDetailsScreen} 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, Alert, TouchableOpacity, Animated, Dimensions, TextInput } from 'react-native';
 import { Text, useTheme, ActivityIndicator, Portal, Dialog, Button as PaperButton } from 'react-native-paper';
 import { Camera, CameraView } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -29,6 +29,13 @@ const CondoQRScannerScreen = ({ navigation }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [scanCount, setScanCount] = useState(0);
   const [lastScannedId, setLastScannedId] = useState(null);
+  
+  // Estados para verificação manual por placa
+  const [manualPlate, setManualPlate] = useState('');
+  const [verifyByPlateLoading, setVerifyByPlateLoading] = useState(false);
+  const [multipleRequests, setMultipleRequests] = useState([]);
+  const [showRequestSelector, setShowRequestSelector] = useState(false);
+  const [manualVerificationMode, setManualVerificationMode] = useState(false);
 
   // Solicitar permissões da câmera
   useEffect(() => {
@@ -79,47 +86,81 @@ const CondoQRScannerScreen = ({ navigation }) => {
     setLastScannedId(requestId);
     return false;
   };
-  // In CondoQRScannerScreen.js
-const handleManualPlateVerification = async () => {
-  try {
-    setVerifyByPlateLoading(true);
-    
-    if (!manualPlate.trim()) {
-      Alert.alert('Error', 'Please enter a vehicle plate');
+  
+  // Função para processar uma solicitação (compartilhada entre QR e verificação manual)
+  const handleProcessRequest = async (request) => {
+    setScannedRequest(request);
+    setDialogVisible(true);
+    setLoading(false);
+  };
+  
+  // Verificação manual por placa
+  const handleManualPlateVerification = async () => {
+    try {
+      setVerifyByPlateLoading(true);
+      
+      if (!manualPlate.trim()) {
+        Alert.alert('Erro', 'Por favor, digite uma placa de veículo');
+        setVerifyByPlateLoading(false);
+        return;
+      }
+      
+      // Limpar formato da placa
+      const formattedPlate = manualPlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      
+      // Buscar solicitações por placa - implementação simplificada
+      // Na implementação real, você deve implementar este método no AccessService
+      let requests = [];
+      try {
+        // Verificar se o método existe
+        if (typeof AccessService.queryAccessRequestsByPlate === 'function') {
+          requests = await AccessService.queryAccessRequestsByPlate(formattedPlate);
+        } else {
+          // Implementação alternativa usando getAccessRequests
+          const allRequests = await AccessService.getAccessRequests(['authorized', 'arrived']);
+          requests = allRequests.filter(req => 
+            req.vehiclePlate && req.vehiclePlate.toUpperCase() === formattedPlate
+          );
+        }
+      } catch (error) {
+        console.error('Erro na busca por placa:', error);
+        // Fallback para pesquisa básica
+        const allRequests = await AccessService.getAccessRequests(['authorized', 'arrived']);
+        requests = allRequests.filter(req => 
+          req.vehiclePlate && req.vehiclePlate.toUpperCase() === formattedPlate
+        );
+      }
+      
+      if (requests.length === 0) {
+        Alert.alert('Nenhuma Solicitação Encontrada', 'Não foram encontradas solicitações de acesso pendentes para esta placa de veículo.');
+        setVerifyByPlateLoading(false);
+        return;
+      }
+      
+      // Se houver múltiplas solicitações, mostrar um seletor
+      if (requests.length > 1) {
+        setMultipleRequests(requests);
+        setShowRequestSelector(true);
+        setVerifyByPlateLoading(false);
+        return;
+      }
+      
+      // Se houver uma única solicitação, processá-la
+      const request = requests[0];
+      handleProcessRequest(request);
+    } catch (error) {
+      console.error('Erro ao verificar placa:', error);
+      Alert.alert('Erro', 'Não foi possível verificar a placa do veículo');
+    } finally {
       setVerifyByPlateLoading(false);
-      return;
     }
-    
-    // Clean up the plate format
-    const formattedPlate = manualPlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    
-    // Search for pending requests with this plate
-    const requests = await AccessService.queryAccessRequestsByPlate(formattedPlate);
-    
-    if (requests.length === 0) {
-      Alert.alert('No Requests Found', 'No pending access requests found for this vehicle plate.');
-      setVerifyByPlateLoading(false);
-      return;
-    }
-    
-    // If multiple requests, show a selector
-    if (requests.length > 1) {
-      setMultipleRequests(requests);
-      setShowRequestSelector(true);
-      setVerifyByPlateLoading(false);
-      return;
-    }
-    
-    // If single request, process it
-    const request = requests[0];
+  };
+  
+  // Selecionar uma solicitação da lista (quando há múltiplas)
+  const handleSelectRequest = (request) => {
+    setShowRequestSelector(false);
     handleProcessRequest(request);
-  } catch (error) {
-    console.error('Error verifying plate:', error);
-    Alert.alert('Error', 'Could not verify the vehicle plate');
-  } finally {
-    setVerifyByPlateLoading(false);
-  }
-};
+  };
 
   // Manipulador para QR Code escaneado
   const handleBarCodeScanned = async ({ type, data }) => {
@@ -166,13 +207,13 @@ const handleManualPlateVerification = async () => {
       } else {
         Alert.alert('QR Code Inválido', result.message || 'Este QR Code não é válido.');
         setScanned(false);
-        setLoading(false);
       }
     } catch (error) {
       console.error('Erro ao processar QR Code:', error);
       Alert.alert('Erro', 'Não foi possível processar o QR Code. Tente novamente.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setScanned(false);
+    } finally {
       setLoading(false);
     }
   };
@@ -183,12 +224,12 @@ const handleManualPlateVerification = async () => {
     
     if (!confirm) {
       setScanned(false);
-      setLoading(false);
       setScannedRequest(null);
       return;
     }
     
     try {
+      setLoading(true);
       await AccessService.updateAccessRequestStatus(scannedRequest.id, 'entered');
       
       // Feedback tátil para confirmar entrada
@@ -199,7 +240,6 @@ const handleManualPlateVerification = async () => {
         'Entrada do motorista registrada com sucesso!',
         [{ text: 'OK', onPress: () => {
           setScanned(false);
-          setLoading(false);
           setScannedRequest(null);
         }}]
       );
@@ -207,9 +247,17 @@ const handleManualPlateVerification = async () => {
       console.error('Erro ao registrar entrada:', error);
       Alert.alert('Erro', 'Não foi possível registrar a entrada. Tente novamente.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setScanned(false);
+    } finally {
       setLoading(false);
     }
+  };
+
+  // Alternar entre verificação por QR code e verificação manual
+  const toggleVerificationMode = () => {
+    setManualVerificationMode(!manualVerificationMode);
+    // Resetar estados ao alternar modos
+    setScanned(false);
+    setManualPlate('');
   };
 
   // Renderizar mensagem de permissão
@@ -243,97 +291,142 @@ const handleManualPlateVerification = async () => {
 
   return (
     <View style={styles.container}>
-      <CameraView
-        style={styles.camera}
-        facing="back"
-        enableTorch={torchOn}
-        barcodeScannerSettings={{
-          barcodeTypes: ["qr"],
-        }}
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-      >
-        {/* Overlay que escurece a tela exceto pela área de escaneamento */}
-        <View style={styles.overlay}>
-          <View style={styles.scanAreaContainer}>
-            <View style={styles.scanArea} />
+      {!manualVerificationMode && (
+        <CameraView
+          style={styles.camera}
+          facing="back"
+          enableTorch={torchOn}
+          barcodeScannerSettings={{
+            barcodeTypes: ["qr"],
+          }}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+        >
+          {/* Overlay que escurece a tela exceto pela área de escaneamento */}
+          <View style={styles.overlay}>
+            <View style={styles.scanAreaContainer}>
+              <View style={styles.scanArea} />
+              
+              {/* Linha de escaneamento animada */}
+              {!scanned && !loading && (
+                <Animated.View
+                  style={[
+                    styles.scanLine,
+                    {
+                      transform: [{ translateY: scanLineAnim }],
+                    },
+                  ]}
+                />
+              )}
+              
+              {/* Cantos da área de escaneamento */}
+              <View style={[styles.cornerTL, styles.corner]} />
+              <View style={[styles.cornerTR, styles.corner]} />
+              <View style={[styles.cornerBL, styles.corner]} />
+              <View style={[styles.cornerBR, styles.corner]} />
+            </View>
+          </View>
+          
+          {/* Cabeçalho */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={28} color="white" />
+            </TouchableOpacity>
             
-            {/* Linha de escaneamento animada */}
-            {!scanned && !loading && (
-              <Animated.View
-                style={[
-                  styles.scanLine,
-                  {
-                    transform: [{ translateY: scanLineAnim }],
-                  },
-                ]}
+            <Text style={styles.headerTitle}>Escanear QR Code</Text>
+          </View>
+        </CameraView>
+      )}
+      
+      {/* Modo de verificação manual */}
+      {manualVerificationMode && (
+        <View style={styles.manualModeContainer}>
+          <View style={styles.manualHeader}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={28} color={theme.colors.primary} />
+            </TouchableOpacity>
+            
+            <Text style={styles.manualHeaderTitle}>Verificar por Placa</Text>
+          </View>
+          
+          <View style={styles.manualContent}>
+            <MaterialCommunityIcons name="car" size={64} color={theme.colors.primary} style={styles.manualIcon} />
+            
+            <Text style={styles.manualInstructions}>
+              Digite a placa do veículo para verificar solicitações ativas
+            </Text>
+            
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.plateInput}
+                value={manualPlate}
+                onChangeText={setManualPlate}
+                placeholder="Placa do veículo (AAA0000)"
+                autoCapitalize="characters"
+                maxLength={7}
               />
-            )}
-            
-            {/* Cantos da área de escaneamento */}
-            <View style={[styles.cornerTL, styles.corner]} />
-            <View style={[styles.cornerTR, styles.corner]} />
-            <View style={[styles.cornerBL, styles.corner]} />
-            <View style={[styles.cornerBR, styles.corner]} />
+              
+              <Button
+                mode="contained"
+                onPress={handleManualPlateVerification}
+                loading={verifyByPlateLoading}
+                disabled={verifyByPlateLoading || !manualPlate.trim()}
+                style={styles.verifyButton}
+              >
+                Verificar
+              </Button>
+            </View>
           </View>
         </View>
-        
-        {/* Cabeçalho */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={28} color="white" />
-          </TouchableOpacity>
-          
-          <Text style={styles.headerTitle}>Escanear QR Code</Text>
-        </View>
-      </CameraView>
-      {/* Manual plate verification section */}
-<View style={styles.manualVerification}>
-  <Text style={styles.sectionTitle}>Verify by Vehicle Plate</Text>
-  <View style={styles.manualPlateInput}>
-    <Input
-      label="Vehicle Plate"
-      value={manualPlate}
-      onChangeText={setManualPlate}
-      placeholder="Enter plate number"
-      autoCapitalize="characters"
-    />
-    <Button
-      mode="contained"
-      onPress={handleManualPlateVerification}
-      loading={verifyByPlateLoading}
-      disabled={verifyByPlateLoading || !manualPlate.trim()}
-      style={styles.verifyButton}
-    >
-      Verify
-    </Button>
-  </View>
-</View>
+      )}
       
       {/* Controles inferiores */}
       <View style={styles.controlsContainer}>
         <Text style={styles.instructionsText}>
-          Posicione o QR Code do motorista dentro da área de escaneamento
+          {manualVerificationMode
+            ? 'Digite a placa do veículo para verificar acesso'
+            : 'Posicione o QR Code do motorista dentro da área de escaneamento'}
         </Text>
         
         <View style={styles.statsContainer}>
-          <Text style={styles.statsText}>QR Codes escaneados: {scanCount}</Text>
+          <Text style={styles.statsText}>
+            {manualVerificationMode ? '' : `QR Codes escaneados: ${scanCount}`}
+          </Text>
         </View>
         
         <View style={styles.buttonsContainer}>
+          {!manualVerificationMode && (
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => setTorchOn(!torchOn)}
+            >
+              <MaterialCommunityIcons
+                name={torchOn ? 'flashlight-off' : 'flashlight'}
+                size={28}
+                color={theme.colors.primary}
+              />
+              <Text style={styles.iconButtonText}>
+                {torchOn ? 'Desligar Flash' : 'Ligar Flash'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => setTorchOn(!torchOn)}
+            onPress={toggleVerificationMode}
           >
             <MaterialCommunityIcons
-              name={torchOn ? 'flashlight-off' : 'flashlight'}
+              name={manualVerificationMode ? 'qrcode-scan' : 'card-text'}
               size={28}
               color={theme.colors.primary}
             />
             <Text style={styles.iconButtonText}>
-              {torchOn ? 'Desligar Flash' : 'Ligar Flash'}
+              {manualVerificationMode ? 'Usar QR Code' : 'Usar Placa'}
             </Text>
           </TouchableOpacity>
           
@@ -350,7 +443,7 @@ const handleManualPlateVerification = async () => {
           </TouchableOpacity>
         </View>
         
-        {scanned && !loading && !dialogVisible && (
+        {scanned && !loading && !dialogVisible && !manualVerificationMode && (
           <Button
             mode="contained"
             onPress={() => setScanned(false)}
@@ -363,7 +456,7 @@ const handleManualPlateVerification = async () => {
         {loading && !dialogVisible && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Processando QR Code...</Text>
+            <Text style={styles.loadingText}>Processando...</Text>
           </View>
         )}
       </View>
@@ -424,6 +517,49 @@ const handleManualPlateVerification = async () => {
             </PaperButton>
             <PaperButton onPress={() => handleEntryConfirmation(true)}>
               Liberar Entrada
+            </PaperButton>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+      
+      {/* Diálogo de seleção de solicitação (quando há múltiplas) */}
+      <Portal>
+        <Dialog
+          visible={showRequestSelector}
+          onDismiss={() => setShowRequestSelector(false)}
+          style={styles.dialog}
+        >
+          <Dialog.Title>Múltiplas Solicitações</Dialog.Title>
+          <Dialog.Content>
+            <Text style={styles.selectorInstructions}>
+              Foram encontradas várias solicitações para esta placa. Selecione uma:
+            </Text>
+            
+            {multipleRequests.map((request) => (
+              <TouchableOpacity
+                key={request.id}
+                style={styles.requestOption}
+                onPress={() => handleSelectRequest(request)}
+              >
+                <View>
+                  <Text style={styles.requestOptionTitle}>
+                    {request.driverName || 'Motorista'}
+                  </Text>
+                  <Text style={styles.requestOptionSubtitle}>
+                    Unidade: {request.unit || 'N/A'}
+                    {request.block ? ` • Bloco ${request.block}` : ''}
+                  </Text>
+                  <Text style={styles.requestOptionDate}>
+                    {request.createdAt && new Date(request.createdAt).toLocaleString()}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={24} color="#757575" />
+              </TouchableOpacity>
+            ))}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <PaperButton onPress={() => setShowRequestSelector(false)}>
+              Cancelar
             </PaperButton>
           </Dialog.Actions>
         </Dialog>
@@ -537,6 +673,7 @@ const styles = StyleSheet.create({
   statsContainer: {
     alignItems: 'center',
     marginBottom: 12,
+    height: 20, // Altura fixa para evitar redimensionamento
   },
   statsText: {
     fontSize: 14,
@@ -624,6 +761,86 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 16,
     textAlign: 'center',
+  },
+  // Estilos para o modo de verificação manual
+  manualModeContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  manualHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: 40,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  manualHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#212121',
+    marginLeft: 8,
+  },
+  manualContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  manualIcon: {
+    marginBottom: 20,
+  },
+  manualInstructions: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#757575',
+  },
+  inputContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  plateInput: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    textAlign: 'center',
+  },
+  verifyButton: {
+    width: '100%',
+  },
+  // Estilos para o seletor de múltiplas solicitações
+  selectorInstructions: {
+    marginBottom: 16,
+    color: '#757575',
+  },
+  requestOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  requestOptionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#212121',
+  },
+  requestOptionSubtitle: {
+    fontSize: 14,
+    color: '#757575',
+    marginTop: 4,
+  },
+  requestOptionDate: {
+    fontSize: 12,
+    color: '#9E9E9E',
+    marginTop: 4,
   },
 });
 

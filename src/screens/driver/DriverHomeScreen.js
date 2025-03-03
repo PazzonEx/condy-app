@@ -1,99 +1,82 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity } from 'react-native';
-import { Text, useTheme, ActivityIndicator, Divider, Card as PaperCard, Badge } from 'react-native-paper';
+import { View, StyleSheet, FlatList, RefreshControl, Image, TouchableOpacity, Alert } from 'react-native';
+import { Text, FAB, Chip, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
-// Hooks personalizados
+// Hooks e serviços
 import { useAuth } from '../../hooks/useAuth';
-
-// Componentes personalizados
-import Button from '../../components/Button';
-
-// Serviços
 import AccessService from '../../services/access.service';
-import FirestoreService from '../../services/firestore.service';
 
-// Utilitários
-import { formatDate } from '../../utils/format';
+// Cores padrão (caso o objeto COLORS não esteja disponível)
+const defaultColors = {
+  primary: '#1E88E5',
+  success: '#4CAF50',
+  danger: '#F44336',
+  warning: '#FF9800',
+  info: '#2196F3',
+  secondary: '#FF9800',
+  grey: {
+    400: '#BDBDBD',
+    600: '#757575'
+  },
+  white: '#FFFFFF',
+  dark: '#212121',
+  light: '#F5F5F5'
+};
+
+// Usar as cores do tema ou as cores padrão
+const getColor = (colorPath) => {
+  const parts = colorPath.split('.');
+  let current = defaultColors;
+  
+  for (const part of parts) {
+    if (current[part] === undefined) {
+      return defaultColors[parts[0]] || '#1E88E5';
+    }
+    current = current[part];
+  }
+  
+  return current;
+};
 
 const DriverHomeScreen = ({ navigation }) => {
-  const theme = useTheme();
   const { userProfile } = useAuth();
+  
+  // Estados
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
-  const [filteredRequests, setFilteredRequests] = useState([]);
-
-  // Carregar solicitações quando a tela receber foco
+  const [filter, setFilter] = useState('active');
+  const [showPromo, setShowPromo] = useState(true);
+  
+  // Carregar solicitações
   useFocusEffect(
     useCallback(() => {
       loadRequests();
     }, [filter])
   );
-
-  // Função para carregar solicitações
+  
+  // Buscar solicitações do servidor
   const loadRequests = async () => {
-    if (refreshing) return;
-    
     try {
       setLoading(true);
       setError(null);
       
-      // Definir condições baseadas no filtro
-      let status = null;
+      // Determinar filtro de status baseado na seleção
+      let statusFilter = null;
+      
       if (filter === 'active') {
-        status = ['pending', 'pending_resident', 'authorized', 'arrived']; // Incluir "pending_resident"
-      }else if (filter === 'completed') {
-        status = ['completed', 'entered', 'denied', 'canceled']; // Status considerados "completados"
+        statusFilter = ['pending', 'pending_resident', 'authorized', 'arrived'];
+      } else if (filter === 'completed') {
+        statusFilter = ['completed', 'entered', 'denied', 'denied_by_resident', 'canceled'];
       }
       
-      // Buscar solicitações
-      const accessRequests = await AccessService.getAccessRequests(status);
-      console.log('Solicitações carregadas:', accessRequests.length);
-      console.log('Dados da primeira solicitação:', accessRequests.length > 0 ? JSON.stringify(accessRequests[0]) : 'Nenhuma');
-      console.log("passei por aqui\n--------------------------------------------------------\n----------------------------------------------------\n---------------------------------");
-      console.log('Dados da primeira solicitação:', accessRequests.length > 0 ? JSON.stringify(accessRequests) : 'Nenhuma');
-      console.log("passei por aqui\n--\n--\n--\n--\n--\n-------");
-
-      // Para cada solicitação, carregar informações do condomínio se não existirem
-      const requestsWithCondoInfo = await Promise.all(
-        accessRequests.map(async (request) => {
-          // Se já tiver as informações do condomínio, retornar como está
-          if (request.condo && request.condo.name) {
-            return request;
-          }
-          
-          // Se não tiver, buscar informações do condomínio
-          try {
-            if (request.condoId) {
-              const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
-              if (condoDoc) {
-                return {
-                  ...request,
-                  condo: condoDoc
-                };
-              }
-            }
-          } catch (condoError) {
-            console.warn(`Erro ao carregar condomínio para solicitação ${request.id}:`, condoError);
-          }
-          
-          // Se não conseguir carregar o condomínio, retornar com info padrão
-          return {
-            ...request,
-            condo: {
-              name: request.condoName || "Condomínio não especificado",
-              address: request.condoAddress || "Endereço não disponível"
-            }
-          };
-        })
-      );
+      // Buscar solicitações usando o serviço existente
+      const accessRequests = await AccessService.getAccessRequests(statusFilter);
+      setRequests(accessRequests);
       
-      setRequests(requestsWithCondoInfo);
-      setFilteredRequests(requestsWithCondoInfo);
     } catch (error) {
       console.error('Erro ao carregar solicitações:', error);
       setError('Não foi possível carregar as solicitações');
@@ -102,281 +85,338 @@ const DriverHomeScreen = ({ navigation }) => {
       setRefreshing(false);
     }
   };
-
-  // Função para atualizar a lista ao puxar para baixo
+  
+  // Atualizar puxando a tela para baixo
   const handleRefresh = () => {
     setRefreshing(true);
     loadRequests();
   };
-
-  // Renderizar um item da lista de solicitações
-  const renderRequestItem = ({ item }) => {
-    // Informações de status e cores
-
-    const statusInfo = {
-      pending: {
-    label: 'Pendente',
-    color: theme.colors.accent,
-    icon: 'clock-outline',
-    description: 'Aguardando aprovação'
-  },
   
-  // Adicionar o novo status "pending_resident"
-  pending_resident: {
-    label: 'Aguardando Morador',
-    color: '#FF9800', // Laranja para diferenciação
-    icon: 'account-clock',
-    description: 'Aguardando aprovação do morador'
-  },
-      authorized: {
-        label: 'Autorizado',
-        color: '#4CAF50',
-        icon: 'check-circle-outline',
-        description: 'Acesso autorizado'
-      },
-      denied: {
-        label: 'Negado',
-        color: theme.colors.error,
-        icon: 'close-circle-outline',
-        description: 'Acesso negado'
-      },
-      arrived: {
-        label: 'Na portaria',
-        color: '#2196F3',
-        icon: 'map-marker',
-        description: 'Você está na portaria'
-      },
-      entered: {
-        label: 'Entrou',
-        color: '#9C27B0',
-        icon: 'login',
-        description: 'Você entrou no condomínio'
-      },
-      completed: {
-        label: 'Concluído',
-        color: '#4CAF50',
-        icon: 'check-circle',
-        description: 'Acesso concluído'
-      },
-      canceled: {
-        label: 'Cancelado',
-        color: '#757575',
-        icon: 'cancel',
-        description: 'Solicitação cancelada'
-      }
-    };
-    
-    const status = statusInfo[item.status] || {
-      label: 'Desconhecido',
-      color: '#757575',
-      icon: 'help-circle-outline',
-      description: 'Status desconhecido'
-    };
-    
-    // Formatar data
-    const createdDate = formatDate(item.createdAt, { 
-      showTime: true, 
-      dateFormat: 'dd/MM/yyyy' 
-    });
-    
-    return (
-      <PaperCard 
-        style={styles.requestCard}
-        onPress={() => navigation.navigate('DriverAccessDetails', { requestId: item.id })}
-      >
-        <View style={styles.cardHeader}>
-          <View style={styles.statusContainer}>
-            <MaterialCommunityIcons name={status.icon} size={24} color={status.color} />
-            <Text style={[styles.statusText, { color: status.color }]}>
-              {status.label}
-            </Text>
-          </View>
-          <Text style={styles.dateText}>{createdDate}</Text>
-        </View>
-        
-        <Divider style={styles.divider} />
-        
-        <View style={styles.cardContent}>
-          <View style={styles.condoInfo}>
-            <MaterialCommunityIcons name="office-building" size={24} color="#555" style={styles.icon} />
-            <View style={styles.condoDetails}>
-              <Text style={styles.condoName}>{item.condo?.name || item.condoName || 'Condomínio não especificado'}</Text>
-              <Text style={styles.infoText}>{status.description}</Text>
-            </View>
-          </View>
-          
-          {(item.condo?.address || item.condoAddress) && (
-            <View style={styles.addressInfo}>
-              <MaterialCommunityIcons name="map-marker" size={20} color="#555" style={styles.icon} />
-              <Text style={styles.infoText}>
-                {item.condo?.address || item.condoAddress}
-              </Text>
-            </View>
-          )}
-          
-          <View style={styles.unitInfo}>
-            <MaterialCommunityIcons name="home" size={20} color="#555" style={styles.icon} />
-            <Text style={styles.infoText}>
-              Unidade: {item.unit || 'N/A'}
-              {item.block ? ` • Bloco ${item.block}` : ''}
-            </Text>
-          </View>
-        </View>
-        
-        <PaperCard.Actions style={styles.cardActions}>
-          <Button 
-            mode="text" 
-            onPress={() => navigation.navigate('DriverAccessDetails', { requestId: item.id })}
-          >
-            Detalhes
-          </Button>
-          
-          {item.status === 'authorized' && (
-            <Button 
-              mode="contained" 
-              icon="qrcode"
-              onPress={() => navigation.navigate('DriverAccessDetails', { requestId: item.id, showQR: true })}
-              style={[styles.qrButton, { backgroundColor: theme.colors.primary }]}
-            >
-              Mostrar QR Code
-            </Button>
-          )}
-        </PaperCard.Actions>
-      </PaperCard>
-    );
+  // Ir para detalhes da solicitação
+  const handleRequestDetails = (requestId) => {
+    navigation.navigate('DriverAccessDetails', { requestId });
   };
-
-  // Renderizar filtros
-  const renderFilters = () => (
-    <View style={styles.filtersContainer}>
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'active' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
-        onPress={() => setFilter('active')}
-      >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'active' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
-        >
-          Ativos
+  
+  // Mostrar QR Code
+  const handleShowQR = (requestId) => {
+    navigation.navigate('DriverAccessDetails', { requestId, showQR: true });
+  };
+  
+  // Componente de promoção
+  const PromoBanner = ({ onPress, onDismiss }) => (
+    <View style={styles.promoBanner}>
+      <View style={styles.promoContent}>
+        <MaterialCommunityIcons name="star" size={24} color={getColor('secondary')} style={styles.promoIcon} />
+        <Text style={styles.promoText}>
+          Tenha acesso ilimitado por apenas R$19,90/mês. Economize tempo e dinheiro!
         </Text>
-        {requests.filter(req => ['pending', 'authorized', 'arrived'].includes(req.status)).length > 0 && (
-          <Badge style={[styles.filterBadge, { backgroundColor: theme.colors.accent }]}>
-            {requests.filter(req => ['pending', 'authorized', 'arrived'].includes(req.status)).length}
-          </Badge>
-        )}
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'completed' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
-        onPress={() => setFilter('completed')}
-      >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'completed' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
+      </View>
+      <View style={styles.promoActions}>
+        <TouchableOpacity 
+          style={[styles.promoButton, styles.subscribeButton]}
+          onPress={onPress}
         >
-          Concluídos
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={[
-          styles.filterButton,
-          filter === 'all' && { backgroundColor: theme.colors.primary + '20' }
-        ]}
-        onPress={() => setFilter('all')}
-      >
-        <Text
-          style={[
-            styles.filterText,
-            filter === 'all' && { color: theme.colors.primary, fontWeight: 'bold' }
-          ]}
+          <Text style={styles.subscribeButtonText}>Assinar</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.dismissButton}
+          onPress={onDismiss}
         >
-          Todos
-        </Text>
-      </TouchableOpacity>
+          <MaterialCommunityIcons name="close" size={20} color={getColor('grey.600')} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
-
-  // Renderizar mensagem de lista vazia
-  const renderEmptyList = () => (
+  
+  // Componente para mostrar solicitações pendentes de aprovação do morador
+  const PendingResidentApproval = () => {
+    const pendingResidentRequests = requests.filter(req => req.status === 'pending_resident');
+    
+    if (pendingResidentRequests.length === 0) return null;
+    
+    return (
+      <View style={styles.pendingSection}>
+        <Text style={styles.sectionTitle}>Aguardando Aprovação</Text>
+        {pendingResidentRequests.map(request => (
+          <View key={request.id} style={styles.pendingRequestCard}>
+            <View style={styles.requestHeader}>
+              <View style={styles.statusContainer}>
+                <MaterialCommunityIcons 
+                  name="account-clock" 
+                  size={24} 
+                  color={getColor('secondary')} 
+                />
+                <Text style={[styles.statusText, { color: getColor('secondary') }]}>
+                  Aguardando Morador
+                </Text>
+              </View>
+              <Text style={styles.dateText}>
+                {request.createdAt ? new Date(request.createdAt).toLocaleDateString('pt-BR') : ''}
+              </Text>
+            </View>
+            
+            <View style={styles.requestContent}>
+              <Text style={styles.unitInfo}>
+                <MaterialCommunityIcons name="home" size={16} color={getColor('grey.600')} />
+                {' '}Unidade: {request.unit}
+                {request.block ? ` • Bloco ${request.block}` : ''}
+              </Text>
+              <Text style={styles.residentName}>
+                {request.residentName || 'Morador'}
+              </Text>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.detailsButton}
+              onPress={() => handleRequestDetails(request.id)}
+            >
+              <Text style={styles.detailsButtonText}>Ver Detalhes</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    );
+  };
+  
+  // Renderizar botões de filtro
+  const renderFilterButtons = () => (
+    <View style={styles.filtersContainer}>
+      <Chip
+        selected={filter === 'active'}
+        onPress={() => setFilter('active')}
+        style={styles.filterChip}
+      >
+        Ativas
+      </Chip>
+      
+      <Chip
+        selected={filter === 'completed'}
+        onPress={() => setFilter('completed')}
+        style={styles.filterChip}
+      >
+        Concluídas
+      </Chip>
+      
+      <Chip
+        selected={filter === 'all'}
+        onPress={() => setFilter('all')}
+        style={styles.filterChip}
+      >
+        Todas
+      </Chip>
+    </View>
+  );
+  
+  // Renderizar estado vazio (sem solicitações)
+  const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <MaterialCommunityIcons name="clipboard-text-outline" size={64} color="#BDBDBD" />
+      <MaterialCommunityIcons name="clipboard-text-outline" size={64} color={getColor('grey.400')} />
       <Text style={styles.emptyTitle}>Nenhuma solicitação encontrada</Text>
-      <Text style={styles.emptyText}>
+      <Text style={styles.emptyDescription}>
         {filter === 'active'
           ? 'Você não tem solicitações ativas no momento'
           : filter === 'completed'
           ? 'Você não tem solicitações concluídas'
           : 'Você ainda não recebeu nenhuma solicitação'}
       </Text>
+      <TouchableOpacity 
+        style={styles.emptyButton}
+        onPress={() => navigation.navigate('Search')}
+      >
+        <Text style={styles.emptyButtonText}>Buscar Condomínio</Text>
+      </TouchableOpacity>
     </View>
   );
-
+  
+  // Função para obter cor baseada no status
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending': return getColor('warning');
+      case 'authorized': return getColor('success');
+      case 'arrived': return getColor('info');
+      case 'entered': return '#9C27B0'; // Roxo
+      case 'completed': return getColor('success');
+      case 'denied': case 'denied_by_resident': return getColor('danger');
+      case 'canceled': return getColor('grey.600');
+      default: return getColor('grey.600');
+    }
+  };
+  
+  // Função para obter ícone baseado no status
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'pending': return 'clock-outline';
+      case 'authorized': return 'check-circle-outline';
+      case 'arrived': return 'map-marker';
+      case 'entered': return 'login';
+      case 'completed': return 'check-circle';
+      case 'denied': case 'denied_by_resident': return 'close-circle-outline';
+      case 'canceled': return 'cancel';
+      default: return 'help-circle-outline';
+    }
+  };
+  
+  // Função para obter texto de status
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'pending': return 'Pendente';
+      case 'pending_resident': return 'Aguardando Morador';
+      case 'authorized': return 'Autorizado';
+      case 'arrived': return 'Na portaria';
+      case 'entered': return 'Entrou';
+      case 'completed': return 'Concluído';
+      case 'denied': return 'Negado';
+      case 'denied_by_resident': return 'Negado pelo Morador';
+      case 'canceled': return 'Cancelado';
+      default: return 'Desconhecido';
+    }
+  };
+  
+  // Filtrar solicitações (excluindo as pendentes de morador que já são mostradas em seção separada)
+  const filteredRequests = requests.filter(req => {
+    if (req.status === 'pending_resident') return false;
+    
+    if (filter === 'all') return true;
+    if (filter === 'active') return ['pending', 'authorized', 'arrived'].includes(req.status);
+    if (filter === 'completed') return ['completed', 'entered', 'denied', 'denied_by_resident', 'canceled'].includes(req.status);
+    
+    return true;
+  });
+  
   return (
     <View style={styles.container}>
       {/* Cabeçalho */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
+      <View style={styles.profileHeader}>
+        <View style={styles.profileInfo}>
           <Text style={styles.greeting}>
             Olá, {userProfile?.displayName?.split(' ')[0] || 'Motorista'}
           </Text>
           <Text style={styles.subtitle}>
-            Gerencie suas solicitações de acesso
+            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </Text>
         </View>
+        <TouchableOpacity 
+          style={styles.profileAvatar} 
+          onPress={() => navigation.navigate('Profile')}
+        >
+          {userProfile?.photoURL ? (
+            <Image 
+              source={{ uri: userProfile.photoURL }} 
+              style={styles.avatarImage} 
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
+                {userProfile?.displayName?.charAt(0).toUpperCase() || 'M'}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
       
+      {/* Promoção (pode ser escondida) */}
+      {showPromo && (
+        <PromoBanner 
+          onPress={() => navigation.navigate('DriverSubscription')}
+          onDismiss={() => setShowPromo(false)}
+        />
+      )}
+      
       {/* Filtros */}
-      {renderFilters()}
+      {renderFilterButtons()}
+      
+      {/* Mensagem de erro */}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+      
+      {/* Solicitações pendentes de aprovação de morador */}
+      <PendingResidentApproval />
       
       {/* Lista de solicitações */}
-      {requests.filter(req => req.status === 'pending_resident').length > 0 && (
-          <PaperCard style={styles.pendingApprovalCard}>
-            <PaperCard.Content>
-              <View style={styles.pendingApprovalHeader}>
-                <MaterialCommunityIcons name="clock-alert" size={24} color="#FF9800" />
-                <Text style={styles.pendingApprovalTitle}>Aguardando Aprovação</Text>
-              </View>
-              
-              <Text style={styles.pendingApprovalText}>
-                Você tem {requests.filter(req => req.status === 'pending_resident').length} solicitação(ões) 
-                aguardando aprovação do morador. Você será notificado quando houver uma resposta.
-              </Text>
-            </PaperCard.Content>
-          </PaperCard>
-        )}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <ActivityIndicator size="large" color={getColor('primary')} />
           <Text style={styles.loadingText}>Carregando solicitações...</Text>
         </View>
       ) : (
         <FlatList
           data={filteredRequests}
-          renderItem={renderRequestItem}
+          renderItem={({item}) => (
+            <View style={styles.requestCard}>
+              <View style={styles.requestHeader}>
+                <View style={styles.statusContainer}>
+                  <MaterialCommunityIcons 
+                    name={getStatusIcon(item.status)} 
+                    size={24} 
+                    color={getStatusColor(item.status)} 
+                  />
+                  <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+                    {getStatusText(item.status)}
+                  </Text>
+                </View>
+                <Text style={styles.dateText}>
+                  {item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR') : ''}
+                </Text>
+              </View>
+
+              <View style={styles.requestContent}>
+                <Text style={styles.unitInfo}>
+                  <MaterialCommunityIcons name="home" size={16} color={getColor('grey.600')} />
+                  {' '}Unidade: {item.unit}
+                  {item.block ? ` • Bloco ${item.block}` : ''}
+                </Text>
+                <Text style={styles.residentName}>
+                  {item.residentName || 'Morador'}
+                </Text>
+                <Text style={styles.condoName}>
+                  {item.condoName || 'Condomínio'}
+                </Text>
+              </View>
+
+              <View style={styles.requestActions}>
+                {item.status === 'authorized' && (
+                  <TouchableOpacity 
+                    style={[styles.actionButton, styles.qrButton]}
+                    onPress={() => handleShowQR(item.id)}
+                  >
+                    <MaterialCommunityIcons name="qrcode" size={20} color={getColor('white')} />
+                    <Text style={styles.qrButtonText}>QR Code</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  style={styles.detailsButton}
+                  onPress={() => handleRequestDetails(item.id)}
+                >
+                  <Text style={styles.detailsButtonText}>Detalhes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              colors={[theme.colors.primary]}
+              colors={[getColor('primary')]}
             />
           }
-          ListEmptyComponent={renderEmptyList}
+          ListEmptyComponent={renderEmptyState}
           showsVerticalScrollIndicator={false}
         />
       )}
+      
+      {/* Botão flutuante para solicitar acesso */}
+      <FAB
+        style={styles.fab}
+        icon="plus"
+        onPress={() => navigation.navigate('Search')}
+        label="Solicitar Acesso"
+      />
     </View>
   );
 };
@@ -384,84 +424,120 @@ const DriverHomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F5F5F5',
   },
-  header: {
-    paddingVertical: 16,
+  profileHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    paddingVertical: 20,
+    backgroundColor: '#FFFFFF',
   },
-  headerContent: {
-    flexDirection: 'column',
+  profileInfo: {
+    flex: 1,
   },
   greeting: {
     fontSize: 22,
     fontWeight: 'bold',
-  },
-  pendingApprovalCard: {
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
-  },
-  pendingApprovalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  pendingApprovalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-    color: '#FF9800',
-  },
-  pendingApprovalText: {
-    fontSize: 14,
-    color: '#555',
+    color: '#212121',
   },
   subtitle: {
     fontSize: 14,
     color: '#757575',
     marginTop: 4,
   },
-  filtersContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'white',
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  profileAvatar: {
+    marginLeft: 16,
   },
-  filterButton: {
-    flexDirection: 'row',
+  avatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  avatarPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginRight: 8,
+    backgroundColor: '#1E88E5',
   },
-  filterText: {
-    fontSize: 14,
-    color: '#757575',
+  avatarText: {
+    fontSize: 24,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
-  filterBadge: {
-    marginLeft: 4,
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 20,
-  },
-  requestCard: {
-    marginBottom: 16,
-    borderRadius: 8,
-  },
-  cardHeader: {
+  promoBanner: {
+    backgroundColor: '#FFF8E1',
+    padding: 12,
+    marginBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+  },
+  promoContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  promoIcon: {
+    marginRight: 12,
+  },
+  promoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#212121',
+  },
+  promoActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  promoButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+  },
+  subscribeButton: {
+    backgroundColor: '#FF9800',
+    marginRight: 12,
+  },
+  subscribeButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  dismissButton: {
+    padding: 4,
+  },
+  pendingSection: {
+    backgroundColor: '#F5F5F5',
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    color: '#212121',
+  },
+  pendingRequestCard: {
+    margin: 16,
+    marginTop: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+    elevation: 2,
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
   },
   statusContainer: {
     flexDirection: 'row',
@@ -476,53 +552,92 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#757575',
   },
-  divider: {
-    marginVertical: 0,
-  },
-  cardContent: {
-    padding: 16,
-  },
-  condoInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  condoDetails: {
-    flex: 1,
-  },
-  condoName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  addressInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+  requestContent: {
+    padding: 12,
   },
   unitInfo: {
+    fontSize: 14,
+    color: '#616161',
+    marginBottom: 4,
+  },
+  residentName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  condoName: {
+    fontSize: 14,
+    color: '#616161',
+  },
+  detailsButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  detailsButtonText: {
+    color: '#1E88E5',
+    fontWeight: '500',
+  },
+  requestCard: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
+    elevation: 2,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#EEEEEE',
+  },
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  icon: {
-    marginRight: 12,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#555',
-  },
-  cardActions: {
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    padding: 8,
+    borderRadius: 4,
+    marginLeft: 8,
   },
   qrButton: {
-    borderRadius: 4,
+    backgroundColor: '#1E88E5',
+  },
+  qrButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  filterChip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  errorContainer: {
+    padding: 16,
+    backgroundColor: '#FFEBEE',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#B71C1C',
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   loadingText: {
     marginTop: 12,
@@ -533,19 +648,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    minHeight: 300,
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginTop: 16,
     marginBottom: 8,
+    color: '#212121',
   },
-  emptyText: {
+  emptyDescription: {
     fontSize: 14,
     color: '#757575',
     textAlign: 'center',
     marginBottom: 20,
+  },
+  emptyButton: {
+    backgroundColor: '#1E88E5',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 4,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  listContainer: {
+    padding: 0,
+    paddingTop: 8,
+    paddingBottom: 80,
+    flexGrow: 1,
+  },
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#1E88E5',
   },
 });
 

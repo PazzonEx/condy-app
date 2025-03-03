@@ -7,7 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import Card from '../../components/Card';
-
+import Logo from '../../assets/condy-logo-refined-final.svg'
 const LoginScreen = ({ navigation }) => {
   const theme = useTheme();
   const { login, error } = useAuth();
@@ -66,13 +66,8 @@ const LoginScreen = ({ navigation }) => {
         {/* Logo e cabeçalho */}
         <View style={styles.header}>
           {/* Substitua pelo caminho real do seu logo */}
-          <Image 
-            source={require('../../assets/logo-placeholder.png')} 
-            style={styles.logo} 
-            resizeMode="contain"
-          />
-          <Text style={styles.title}>Condy</Text>
-          <Text style={styles.subtitle}>Controle de acesso para condomínios</Text>
+          <Logo style={styles.logo} resizeMode="contain" />
+        
         </View>
 
         {/* Formulário de login */}
@@ -149,8 +144,8 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   logo: {
-    width: 100,
-    height: 100,
+    width: 250,
+    height: 250,
     marginBottom: 10,
   },
   title: {

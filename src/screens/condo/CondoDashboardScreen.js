@@ -1,10 +1,11 @@
 // src/screens/condo/CondoDashboardScreen.js
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Dimensions ,Alert} from 'react-native';
-import { Text, Card, useTheme, ActivityIndicator, Divider, Title } from 'react-native-paper';
+import { Text, Card, useTheme, Divider, Title } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { auth } from '../../config/firebase'; // Adicionar importação do auth
+import { ActivityIndicator } from 'react-native-paper';
 
 
 // Hooks
