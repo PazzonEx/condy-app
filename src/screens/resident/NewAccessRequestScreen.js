@@ -185,7 +185,7 @@ const handleSubmit = async () => {
 
   const currentUser = auth.currentUser;
   if (!currentUser) {
-    Alert.alert('Error', 'User not authenticated');
+    Alert.alert('Error', 'Usuario não autenticado');
     return;
   }
 

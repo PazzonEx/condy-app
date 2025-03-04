@@ -16,6 +16,7 @@ import CondoSubscriptionScreen from '../screens/condo/CondoSubscriptionScreen';
 import CondoDashboardScreen from '../screens/condo/CondoDashboardScreen';
 import CondoReportScreen from '../screens/condo/CondoReportScreen';
 import CondoProfileScreen from '../screens/condo/CondoProfileScreen';
+import CondoSubscriptionPasswordScreen from '../screens/condo/CondoSubscriptionPasswordScreen';
 
 // Criar navegadores
 const Tab = createBottomTabNavigator();
@@ -66,6 +67,22 @@ const HomeStackNavigator = () => {
         component={CondoReportScreen} 
         options={{ title: 'Relatório Detalhado' }}
       />
+      <HomeStack.Screen 
+        name="CondoSubscription" 
+        component={CondoSubscriptionScreen} 
+        options={{ title: 'Planos e Assinaturas' }}
+      />
+       <HomeStack.Screen 
+      name="CondoProfile" 
+      component={CondoProfileScreen} 
+      options={{ title: 'Perfil do Condomínio' }}
+    />
+    
+<HomeStack.Screen 
+  name="CondoSubscriptionPassword" 
+  component={CondoSubscriptionPasswordScreen} 
+  options={{ title: 'Senha de Administrador' }} 
+/>
     </HomeStack.Navigator>
   );
 };
@@ -156,11 +173,18 @@ const SettingsStackNavigator = () => {
         component={CondoSubscriptionScreen} 
         options={{ title: 'Planos e Assinaturas' }}
       />
+      
       <SettingsStack.Screen 
       name="CondoProfile" 
       component={CondoProfileScreen} 
       options={{ title: 'Perfil do Condomínio' }}
     />
+            
+        <SettingsStack.Screen 
+          name="CondoSubscriptionPassword" 
+          component={CondoSubscriptionPasswordScreen} 
+          options={{ title: 'Senha de Administrador' }} 
+        />
     </SettingsStack.Navigator>
   );
 };
