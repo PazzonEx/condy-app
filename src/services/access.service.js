@@ -2,6 +2,8 @@ import FirestoreService from './firestore.service';
 import NotificationService from './notification.service';
 import { auth } from '../config/firebase';
 import { serverTimestamp } from 'firebase/firestore';
+import { firestore } from '../config/firebase';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 
 const AccessService = {
 // No AccessService.js
@@ -71,6 +73,131 @@ async approveResidentRequest(requestId) {
     throw error;
   }
 },
+
+async getAccessRequestDetails(requestId) {
+  try {
+    if (!requestId) {
+      throw new Error('ID da solicitação não fornecido');
+    }
+    
+    // Buscar documento da solicitação
+    const requestDoc = await FirestoreService.getDocument('access_requests', requestId);
+    
+    if (!requestDoc) {
+      throw new Error('Solicitação não encontrada');
+    }
+    
+    // Dados completos a serem retornados
+    const detailedRequest = { ...requestDoc };
+    
+    // Buscar dados do residente (se existir)
+    if (requestDoc.residentId) {
+      try {
+        const residentDoc = await FirestoreService.getDocument('residents', requestDoc.residentId);
+        if (residentDoc) {
+          detailedRequest.resident = residentDoc;
+        } else {
+          console.warn(`Residente não encontrado: ${requestDoc.residentId}`);
+          // Fornecer dados mínimos para evitar erros de UI
+          detailedRequest.resident = { 
+            name: 'Morador não encontrado', 
+            unit: requestDoc.unit || 'N/A', 
+            block: requestDoc.block || 'N/A' 
+          };
+        }
+      } catch (error) {
+        console.error('Erro ao buscar dados do residente:', error);
+        // Fornecer dados mínimos para evitar erros de UI
+        detailedRequest.resident = { 
+          name: 'Erro ao carregar morador', 
+          unit: requestDoc.unit || 'N/A', 
+          block: requestDoc.block || 'N/A' 
+        };
+      }
+    }
+    
+    // Buscar dados do condomínio (se existir)
+    if (requestDoc.condoId) {
+      try {
+        const condoDoc = await FirestoreService.getDocument('condos', requestDoc.condoId);
+        if (condoDoc) {
+          detailedRequest.condo = condoDoc;
+        } else {
+          console.warn(`Condomínio não encontrado: ${requestDoc.condoId}`);
+          // Fornecer dados mínimos para evitar erros de UI
+          detailedRequest.condo = { 
+            name: requestDoc.condoName || 'Condomínio não encontrado', 
+            address: 'Endereço não disponível' 
+          };
+        }
+      } catch (error) {
+        console.error('Erro ao buscar dados do condomínio:', error);
+        // Fornecer dados mínimos para evitar erros de UI
+        detailedRequest.condo = { 
+          name: requestDoc.condoName || 'Erro ao carregar condomínio', 
+          address: 'Endereço não disponível' 
+        };
+      }
+    }
+    
+    return detailedRequest;
+  } catch (error) {
+    console.error('Erro ao obter detalhes da solicitação:', error);
+    throw error;
+  }
+},
+
+/**
+ * Obter histórico de acessos de um residente
+ * @param {string} residentId - ID do residente
+ * @param {number} limit - Número máximo de registros a retornar (opcional)
+ * @returns {Promise<Array>} - Lista de solicitações de acesso
+ */
+async getResidentAccessHistory(residentId, limit = 50) {
+  try {
+    if (!residentId) {
+      throw new Error('Resident ID not provided');
+    }
+    
+    console.log(`Fetching history for resident: ${residentId}`);
+    
+    // Query conditions
+    const conditions = [
+      { field: 'residentId', operator: '==', value: residentId }
+    ];
+    
+    // Order by creation date (newest first)
+    const orderBy = {
+      field: 'createdAt',
+      direction: 'desc'
+    };
+    
+    // Fetch requests
+    const requests = await FirestoreService.queryDocuments(
+      'access_requests',
+      conditions,
+      orderBy,
+      limit
+    );
+    
+    console.log(`Retrieved ${requests.length} history records`);
+    
+    // Mark requests as read (we'll do this one by one)
+    for (const request of requests) {
+      if (request.read !== true) {
+        await FirestoreService.updateDocument('access_requests', request.id, {
+          read: true
+        });
+      }
+    }
+    
+    return requests;
+  } catch (error) {
+    console.error('Error getting resident access history:', error);
+    throw error;
+  }
+},
+
 
 // Resident denial function
 async denyResidentRequest(requestId) {

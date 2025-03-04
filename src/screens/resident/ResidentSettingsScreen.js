@@ -1,3 +1,5 @@
+// Em src/screens/resident/ResidentSettingsScreen.js
+
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Switch, TouchableOpacity } from 'react-native';
 import { List, Text, Divider, useTheme, Dialog, Portal, RadioButton, Button as PaperButton } from 'react-native-paper';
@@ -30,7 +32,6 @@ const ResidentSettingsScreen = ({ navigation }) => {
   
   // Estados para diálogos
   const [languageDialogVisible, setLanguageDialogVisible] = useState(false);
-  const [dateFormatDialogVisible, setDateFormatDialogVisible] = useState(false);
   const [deleteAccountDialogVisible, setDeleteAccountDialogVisible] = useState(false);
   const [confirmationText, setConfirmationText] = useState('');
   
@@ -43,53 +44,74 @@ const ResidentSettingsScreen = ({ navigation }) => {
   
   // Carregar configurações do usuário
   useEffect(() => {
-    const loadSettings = async () => {
-      if (!userProfile) return;
-      
-      try {
-        setLoading(true);
-        
-        // Buscar configurações no Firestore
-        const settings = await FirestoreService.getDocument('user_settings', userProfile.uid);
-        
-        if (settings) {
-          setSettingsData(settings);
-          setNotificationsEnabled(settings.notificationsEnabled !== false);
-          setEmailNotificationsEnabled(settings.emailNotificationsEnabled !== false);
-          setSaveHistory(settings.saveHistory !== false);
-          setDefaultDriverMode(settings.defaultDriverMode || 'listed');
-          setLanguage(settings.language || 'pt-BR');
-          setTheme24Hour(settings.theme24Hour !== false);
-        } else {
-          // Se não existir, criar com valores padrão
-          const defaultSettings = {
-            notificationsEnabled: true,
-            emailNotificationsEnabled: true,
-            saveHistory: true,
-            defaultDriverMode: 'listed',
-            language: 'pt-BR',
-            theme24Hour: true
-          };
-          
-          await FirestoreService.createDocumentWithId('user_settings', userProfile.uid, defaultSettings);
-          setSettingsData(defaultSettings);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar configurações:', error);
-        Alert.alert('Erro', 'Não foi possível carregar suas configurações. Tente novamente mais tarde.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     loadSettings();
   }, [userProfile]);
+  
+  const loadSettings = async () => {
+    if (!userProfile) return;
+    
+    try {
+      setLoading(true);
+      
+      // Verificar se temos um ID válido
+      const userId = userProfile.id || userProfile.uid;
+      
+      if (!userId) {
+        console.error('ID de usuário não disponível:', userProfile);
+        Alert.alert('Erro', 'Não foi possível identificar seu perfil. Por favor, faça login novamente.');
+        return;
+      }
+      
+      console.log('Carregando configurações para usuário:', userId);
+      
+      // Buscar configurações no Firestore
+      const settings = await FirestoreService.getDocument('user_settings', userId);
+      
+      if (settings) {
+        console.log('Configurações encontradas:', settings);
+        setSettingsData(settings);
+        setNotificationsEnabled(settings.notificationsEnabled !== false);
+        setEmailNotificationsEnabled(settings.emailNotificationsEnabled !== false);
+        setSaveHistory(settings.saveHistory !== false);
+        setDefaultDriverMode(settings.defaultDriverMode || 'listed');
+        setLanguage(settings.language || 'pt-BR');
+        setTheme24Hour(settings.theme24Hour !== false);
+      } else {
+        console.log('Configurações não encontradas. Criando padrões...');
+        // Se não existir, criar com valores padrão
+        const defaultSettings = {
+          notificationsEnabled: true,
+          emailNotificationsEnabled: true,
+          saveHistory: true,
+          defaultDriverMode: 'listed',
+          language: 'pt-BR',
+          theme24Hour: true
+        };
+        
+        await FirestoreService.createDocumentWithId('user_settings', userId, defaultSettings);
+        setSettingsData(defaultSettings);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configurações:', error);
+      Alert.alert('Erro', 'Não foi possível carregar suas configurações. Tente novamente mais tarde.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Atualizar configuração
   const updateSetting = async (key, value) => {
     try {
+      const userId = userProfile.id || userProfile.uid;
+      
+      if (!userId) {
+        throw new Error('ID de usuário não disponível');
+      }
+      
+      console.log(`Atualizando configuração ${key} para ${value} (usuário ${userId})`);
+      
       // Atualizar no Firestore
-      await FirestoreService.updateDocument('user_settings', userProfile.uid, {
+      await FirestoreService.updateDocument('user_settings', userId, {
         [key]: value
       });
       
@@ -99,7 +121,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
       return true;
     } catch (error) {
       console.error(`Erro ao atualizar configuração ${key}:`, error);
-      Alert.alert('Erro', 'Não foi possível salvar a configuração. Tente novamente.');
+      Alert.alert('Erro', 'Não foi possível salvar a configuração. Tente novamente mais tarde.');
       return false;
     }
   };
@@ -156,6 +178,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
   // Manipuladores para testar notificações
   const handleTestNotification = async () => {
     try {
+      console.log('Enviando notificação de teste...');
       await NotificationService.sendLocalNotification(
         'Notificação de Teste',
         'Esta é uma notificação de teste do Condy',
@@ -165,52 +188,61 @@ const ResidentSettingsScreen = ({ navigation }) => {
       Alert.alert('Sucesso', 'Notificação de teste enviada');
     } catch (error) {
       console.error('Erro ao enviar notificação de teste:', error);
-      Alert.alert('Erro', 'Não foi possível enviar a notificação de teste');
+      Alert.alert('Erro', 'Não foi possível enviar a notificação de teste. Verifique as permissões do aplicativo.');
     }
   };
   
   // Manipulador para excluir conta
   const handleDeleteAccount = async () => {
-    if (confirmationText !== userProfile?.email) {
-      Alert.alert('Erro', 'O email digitado não corresponde ao seu email.');
-      return;
-    }
-    
-    setDeleteAccountDialogVisible(false);
-    setConfirmationText('');
-    
-    Alert.alert(
-      'Atenção',
-      'Esta ação excluirá permanentemente sua conta e todos os dados associados. Esta ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Excluir Conta', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              
-              // Aqui teríamos a lógica para excluir a conta
-              // Não implementaremos completamente para evitar exclusões acidentais
-              // Em um app real, precisaríamos:
-              // 1. Excluir documentos do usuário no Firestore
-              // 2. Excluir o usuário no Firebase Auth
-              
-              Alert.alert(
-                'Conta Desativada',
-                'Sua conta foi marcada para exclusão. Este processo pode levar alguns dias para ser concluído.',
-                [{ text: 'OK', onPress: logout }]
-              );
-            } catch (error) {
-              console.error('Erro ao excluir conta:', error);
-              Alert.alert('Erro', 'Não foi possível excluir sua conta. Tente novamente mais tarde.');
-              setLoading(false);
+    try {
+      // Verificar confirmação por email
+      if (confirmationText !== userProfile?.email) {
+        Alert.alert('Erro', 'O email digitado não corresponde ao seu email.');
+        return;
+      }
+      
+      setDeleteAccountDialogVisible(false);
+      setConfirmationText('');
+      
+      Alert.alert(
+        'Atenção',
+        'Esta ação excluirá permanentemente sua conta e todos os dados associados. Esta ação não pode ser desfeita.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { 
+            text: 'Excluir Conta', 
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                setLoading(true);
+                const userId = userProfile.id || userProfile.uid;
+                
+                // Marcar a conta para exclusão
+                await FirestoreService.updateDocument('users', userId, {
+                  status: 'deleted',
+                  deletedAt: new Date(),
+                  deletionReason: 'user_requested'
+                });
+                
+                // Informar ao usuário
+                Alert.alert(
+                  'Conta Desativada',
+                  'Sua conta foi marcada para exclusão. Este processo pode levar alguns dias para ser concluído.',
+                  [{ text: 'OK', onPress: logout }]
+                );
+              } catch (error) {
+                console.error('Erro ao excluir conta:', error);
+                Alert.alert('Erro', 'Não foi possível excluir sua conta. Tente novamente mais tarde.');
+                setLoading(false);
+              }
             }
           }
-        }
-      ]
-    );
+        ]
+      );
+    } catch (error) {
+      console.error('Erro ao processar exclusão de conta:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao processar sua solicitação.');
+    }
   };
   
   // Função para fazer logout
@@ -225,10 +257,28 @@ const ResidentSettingsScreen = ({ navigation }) => {
         },
         {
           text: 'Sair',
-          onPress: logout,
+          onPress: () => {
+            console.log('Usuário solicitou logout');
+            try {
+              logout();
+            } catch (error) {
+              console.error('Erro ao fazer logout:', error);
+              Alert.alert('Erro', 'Não foi possível fazer logout. Tente novamente.');
+            }
+          },
         },
       ]
     );
+  };
+  
+  // Navegar para a tela de alteração de senha
+  const handleNavigateToChangePassword = () => {
+    navigation.navigate('ChangePassword');
+  };
+  
+  // Navegar para a tela de edição de perfil
+  const handleNavigateToProfile = () => {
+    navigation.navigate('Profile');
   };
   
   // Obter o rótulo do idioma atual
@@ -258,6 +308,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
               value={notificationsEnabled}
               onValueChange={handleToggleNotifications}
               color={theme.colors.primary}
+              disabled={loading}
             />
           )}
         />
@@ -271,6 +322,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
               value={emailNotificationsEnabled}
               onValueChange={handleToggleEmailNotifications}
               color={theme.colors.primary}
+              disabled={loading}
             />
           )}
         />
@@ -280,9 +332,10 @@ const ResidentSettingsScreen = ({ navigation }) => {
           description="Enviar uma notificação de teste"
           left={props => <List.Icon {...props} icon="bell-ring" />}
           onPress={handleTestNotification}
+          disabled={loading}
         />
         
-        <Divider />
+        <Divider style={styles.divider} />
         
         <List.Subheader>Preferências</List.Subheader>
         
@@ -295,6 +348,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
               value={saveHistory}
               onValueChange={handleToggleSaveHistory}
               color={theme.colors.primary}
+              disabled={loading}
             />
           )}
         />
@@ -307,6 +361,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
             const newMode = defaultDriverMode === 'listed' ? 'new' : 'listed';
             handleSetDefaultDriverMode(newMode);
           }}
+          disabled={loading}
         />
         
         <List.Item
@@ -314,6 +369,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
           description={getCurrentLanguageLabel()}
           left={props => <List.Icon {...props} icon="translate" />}
           onPress={() => setLanguageDialogVisible(true)}
+          disabled={loading}
         />
         
         <List.Item
@@ -325,11 +381,12 @@ const ResidentSettingsScreen = ({ navigation }) => {
               value={theme24Hour}
               onValueChange={handleToggleTimeFormat}
               color={theme.colors.primary}
+              disabled={loading}
             />
           )}
         />
         
-        <Divider />
+        <Divider style={styles.divider} />
         
         <List.Subheader>Conta</List.Subheader>
         
@@ -337,14 +394,16 @@ const ResidentSettingsScreen = ({ navigation }) => {
           title="Alterar Senha"
           description="Atualizar sua senha de acesso"
           left={props => <List.Icon {...props} icon="lock-reset" />}
-          onPress={() => navigation.navigate('ChangePassword')}
+          onPress={handleNavigateToChangePassword}
+          disabled={loading}
         />
         
         <List.Item
           title="Editar Perfil"
           description="Atualizar suas informações pessoais"
           left={props => <List.Icon {...props} icon="account-edit" />}
-          onPress={() => navigation.navigate('Profile')}
+          onPress={handleNavigateToProfile}
+          disabled={loading}
         />
         
         <List.Item
@@ -353,6 +412,7 @@ const ResidentSettingsScreen = ({ navigation }) => {
           left={props => <List.Icon {...props} icon="account-remove" color="#D32F2F" />}
           titleStyle={{ color: '#D32F2F' }}
           onPress={() => setDeleteAccountDialogVisible(true)}
+          disabled={loading}
         />
       </List.Section>
       
@@ -362,6 +422,8 @@ const ResidentSettingsScreen = ({ navigation }) => {
           icon="logout"
           onPress={handleLogout}
           style={styles.logoutButton}
+          loading={loading}
+          disabled={loading}
         >
           Sair
         </Button>
@@ -457,6 +519,9 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
     color: '#757575',
+  },
+  divider: {
+    marginVertical: 8,
   },
   logoutContainer: {
     padding: 16,

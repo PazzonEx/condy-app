@@ -214,4 +214,5 @@ async createDocument(collectionName, data) {
     }
   };
   
+  
   export default FirestoreService;
