@@ -63,6 +63,10 @@ async createDocument(collectionName, data) {
     throw error;
   }
 },
+
+
+
+
     // Criar documento com ID específico
     async createDocumentWithId(collectionName, docId, data) {
       try {

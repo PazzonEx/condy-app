@@ -23,6 +23,10 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    }, 
+    "extra": {
+      "googlePlacesApiKey": "AIzaSyDLCX6mp0wrb48jXfWk2goAvpEy-YUNwrw"
+      
     }
   }
 }

@@ -26,6 +26,9 @@ const auth = initializeAuth(app, {
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 
+
+
+
 // Exportar os serviços do Firebase
-export { auth, firestore, storage };
+export { auth ,firestore, storage };
 export default app;

@@ -4,452 +4,287 @@ import {
   StyleSheet, 
   ScrollView, 
   Alert, 
-  TouchableOpacity,
-  Image,
-  Dimensions
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator
 } from 'react-native';
-import { 
-  Text, 
-  useTheme, 
-  Card, 
-  Chip, 
-  Searchbar, 
-  ActivityIndicator,
-  Button as PaperButton
-} from 'react-native-paper';
+import { Text, useTheme, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import FirestoreService from '../../services/firestore.service';
+import * as Location from 'expo-location';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
 
-// Serviços
-import CondoSearchService from '../../services/condo-search.service';
-import AccessService from '../../services/access.service';
-
 // Componentes personalizados
-import Input from '../../components/Input';
+import Card from '../../components/Card';
 import Button from '../../components/Button';
+import Input from '../../components/Input';
+import GooglePlacesCondoSearch from '../../components/GooglePlacesCondoSearch';
 
-const { width } = Dimensions.get('window');
+// Serviços
+import AccessService from '../../services/access.service';
+import FirestoreService from '../../services/firestore.service';
 
 const DriverCondoSearchScreen = ({ navigation }) => {
   const theme = useTheme();
   const { userProfile } = useAuth();
   
-  // Estados para busca de condomínios
-  const [searchQuery, setSearchQuery] = useState('');
-  const [condos, setCondos] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // Estados
   const [selectedCondo, setSelectedCondo] = useState(null);
-  const [error, setError] = useState(null);
-
-  // Estados para solicitação de acesso
+  const [loading, setLoading] = useState(false);
+  const [initialLocation, setInitialLocation] = useState(null);
   const [requestDetails, setRequestDetails] = useState({
     unit: '',
     block: '',
     comment: ''
   });
-  const [requestLoading, setRequestLoading] = useState(false);
-  // Carregar alguns condomínios ao montar o componente
-  // In DriverCondoSearchScreen.js
-const [showResidentSearch, setShowResidentSearch] = useState(false);
-const [residentSearchQuery, setResidentSearchQuery] = useState('');
-const [residents, setResidents] = useState([]);
-const [filteredResidents, setFilteredResidents] = useState([]);
+  const [formErrors, setFormErrors] = useState({});
 
-// Load residents for the selected condo
-useEffect(() => {
-  if (selectedCondo && selectedCondo.id) {
-    const loadResidents = async () => {
-      try {
-        // Query residents by condoId
-        const condoResidents = await FirestoreService.queryDocuments('residents', [
-          { field: 'condoId', operator: '==', value: selectedCondo.id }
-        ]);
-        setResidents(condoResidents);
-      } catch (error) {
-        console.error('Error loading residents:', error);
-      }
-    };
-    
-    loadResidents();
-  }
-}, [selectedCondo]);
-
-// Filter residents based on search
-useEffect(() => {
-  if (residentSearchQuery.trim() === '') {
-    setFilteredResidents([]);
-    return;
-  }
-  
-  const query = residentSearchQuery.toLowerCase();
-  const filtered = residents.filter(resident => {
-    const name = (resident.name || '').toLowerCase();
-    const unit = (resident.unit || '').toLowerCase();
-    const block = (resident.block || '').toLowerCase();
-    
-    return name.includes(query) || 
-           unit.includes(query) || 
-           block.includes(query) ||
-           `${unit}${block}`.includes(query);
-  });
-  
-  setFilteredResidents(filtered);
-}, [residentSearchQuery, residents]);
-
-// Resident search component
-const ResidentSearchInput = () => (
-  <View style={styles.residentSearchContainer}>
-    <Input
-      label="Search for Resident"
-      value={residentSearchQuery}
-      onChangeText={(text) => {
-        setResidentSearchQuery(text);
-        setShowResidentSearch(true);
-      }}
-      placeholder="Search by name, unit or block"
-      right={
-        <TouchableOpacity 
-          style={styles.searchButton}
-          onPress={() => setShowResidentSearch(!showResidentSearch)}
-        >
-          <MaterialCommunityIcons name="magnify" size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
-      }
-    />
-    
-    {showResidentSearch && filteredResidents.length > 0 && (
-      <Card style={styles.dropdownCard}>
-        <ScrollView style={styles.dropdownList} nestedScrollEnabled={true}>
-          {filteredResidents.map(resident => (
-            <TouchableOpacity
-              key={resident.id}
-              style={styles.dropdownItem}
-              onPress={() => {
-                // Set resident details to form
-                setRequestDetails(prev => ({
-                  ...prev,
-                  residentName: resident.name,
-                  unit: resident.unit,
-                  block: resident.block || ''
-                }));
-                setShowResidentSearch(false);
-                setResidentSearchQuery('');
-              }}
-            >
-              <MaterialCommunityIcons 
-                name="account" 
-                size={20} 
-                color="#555" 
-                style={styles.dropdownIcon} 
-              />
-              <View>
-                <Text style={styles.dropdownItemText}>{resident.name}</Text>
-                <Text style={styles.dropdownItemSubtext}>
-                  Unit: {resident.unit}{resident.block ? ` • Block ${resident.block}` : ''}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </Card>
-    )}
-  </View>
-);
-
+  // Obter localização ao iniciar
   useEffect(() => {
-    const loadCondos = async () => {
-      try {
-        setLoading(true);
-        // Buscar todos os condomínios disponíveis
-        const availableCondos = await CondoSearchService.searchCondos({
-          onlyActive: true,
-          maxResults: 50
-        });
-        
-        console.log(`Carregados ${availableCondos.length} condomínios disponíveis`);
-        setCondos(availableCondos);
-        
-        // Log para depuração
-        if (availableCondos.length > 0) {
-          console.log('Exemplo de condomínio:', JSON.stringify(availableCondos[0]));
-        }
-      } catch (error) {
-        console.error('Erro ao carregar condomínios:', error);
-        Alert.alert('Erro', 'Não foi possível carregar a lista de condomínios.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadCondos();
+    getLocationAsync();
   }, []);
 
-  // Carregar condomínios iniciais
-  const loadInitialCondos = async () => {
+  // Obter localização atual para melhorar a busca
+  const getLocationAsync = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      const { status } = await Location.requestForegroundPermissionsAsync();
       
-      // Buscar os primeiros 10 condomínios
-      const condosList = await FirestoreService.getCollection('condos');
-      
-      // Limitar para os primeiros 10
-      const limitedCondos = condosList.slice(0, 10);
-      
-      setCondos(limitedCondos);
-      
-      if (limitedCondos.length === 0) {
-        setError('Nenhum condomínio encontrado. Tente buscar pelo nome.');
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({});
+        setInitialLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude
+        });
       }
     } catch (error) {
-      console.error('Erro ao carregar condomínios:', error);
-      setError('Não foi possível carregar a lista de condomínios');
+      console.log('Erro ao obter localização:', error);
+    }
+  };
+
+  // Selecionar condomínio
+  const handleSelectCondo = (condo) => {
+    // Verificar explicitamente se o condomínio pode ser selecionado
+    // O componente GooglePlacesCondoSearch já impede a seleção de condomínios não registrados,
+    // mas esta é uma verificação adicional de segurança
+    if (condo.fromGoogle && !condo.inSystem) {
+      Alert.alert(
+        'Condomínio não cadastrado',
+        'Este condomínio ainda não está cadastrado no nosso aplicativo. No momento só atendemos condomínios já cadastrados.',
+        [{ text: 'Entendi' }]
+      );
+      return;
+    }
+    
+    // Condomínio válido, pode prosseguir
+    setSelectedCondo(condo);
+    setFormErrors({});
+    
+    // Limpar detalhes da solicitação
+    setRequestDetails({
+      unit: '',
+      block: '',
+      comment: ''
+    });
+  };
+
+  // Validar formulário
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!selectedCondo) {
+      errors.condo = 'Selecione um condomínio';
+    }
+    
+    if (!requestDetails.unit.trim()) {
+      errors.unit = 'Informe a unidade';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Enviar solicitação de acesso
+  const handleSubmitRequest = async () => {
+    if (!validateForm()) {
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      // Preparar dados da solicitação
+      const requestData = {
+        condoId: selectedCondo.id,
+        unit: requestDetails.unit.trim(),
+        block: requestDetails.block.trim(),
+        comment: requestDetails.comment || '',
+        driverId: userProfile.id,
+        driverName: userProfile.name || '',
+        condoName: selectedCondo.name || '',
+        status: 'pending',
+        createdAt: new Date()
+      };
+      
+      // Enviar solicitação
+      const requestId = await AccessService.createAccessRequest(requestData, 'driver');
+      
+      Alert.alert(
+        'Solicitação Enviada',
+        `Solicitação de acesso para ${selectedCondo.name} enviada com sucesso. Aguarde a aprovação do morador.`,
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            navigation.goBack();
+          } 
+        }]
+      );
+    } catch (error) {
+      console.error('Erro ao criar solicitação:', error);
+      Alert.alert('Erro', error.message || 'Não foi possível enviar a solicitação');
     } finally {
       setLoading(false);
     }
   };
 
-// Atualizar a função searchCondos
-const searchCondos = async () => {
-  if (searchQuery.trim().length < 2) {
-    Alert.alert('Aviso', 'Digite pelo menos 2 caracteres para buscar');
-    return;
-  }
-
-  try {
-    setLoading(true);
-    console.log(`Buscando condomínios com a query: "${searchQuery}"`);
-    
-    const results = await CondoSearchService.searchCondos({
-      query: searchQuery,
-      onlyActive: true,
-      maxResults: 20
-    });
-    
-    console.log(`Encontrados ${results.length} condomínios`);
-    
-    // Adicionar log para verificar a estrutura dos resultados
-    if (results.length > 0) {
-      console.log('Exemplo de resultado:', JSON.stringify(results[0]));
-    }
-    
-    setCondos(results);
-    
-    if (results.length === 0) {
-      Alert.alert('Resultado', 'Nenhum condomínio encontrado');
-    }
-  } catch (error) {
-    console.error('Erro na busca:', error);
-    Alert.alert('Erro', 'Não foi possível buscar condomínios');
-  } finally {
-    setLoading(false);
-  }
-};
-
-    // Enviar solicitação de acesso
-// Em DriverCondoSearchScreen.js
-const handleSubmitAccessRequest = async () => {
-  try {
-    setRequestLoading(true);
-    
-    // Validações
-    if (!selectedCondo) {
-      Alert.alert('Erro', 'Selecione um condomínio');
-      setRequestLoading(false);
-      return;
-    }
-  
-    if (!requestDetails.unit.trim()) {
-      Alert.alert('Erro', 'Informe a unidade');
-      setRequestLoading(false);
-      return;
-    }
-    
-    // Preparar dados da solicitação
-    const requestData = {
-      condoId: selectedCondo.id,
-      condoName: selectedCondo.name,
-      unit: requestDetails.unit.trim(),
-      block: requestDetails.block.trim(),
-      comment: requestDetails.comment,
-      type: 'driver'
-    };
-    
-    // Enviar solicitação
-    await AccessService.createAccessRequest(requestData, 'driver');
-    
-    Alert.alert(
-      'Sucesso', 
-      `Solicitação de acesso enviada para o morador da unidade ${requestDetails.unit}${requestDetails.block ? ` Bloco ${requestDetails.block}` : ''}!`,
-      [{ 
-        text: 'OK', 
-        onPress: () => {
-          setSelectedCondo(null);
-          setRequestDetails({
-            unit: '',
-            block: '',
-            comment: ''
-          });
-          navigation.navigate('Home');
-        } 
-      }]
-    );
-  } catch (error) {
-    console.error('Erro ao criar solicitação:', error);
-    Alert.alert('Erro', 'Não foi possível enviar a solicitação: ' + error.message);
-  } finally {
-    setRequestLoading(false);
-  }
-};
-
-  // Renderizar cartão de condomínio
-  const renderCondoCard = (condo) => (
-    <TouchableOpacity 
-      key={condo.id}
-      onPress={() => setSelectedCondo(condo)}
-      style={[
-        styles.condoCard,
-        selectedCondo?.id === condo.id && styles.selectedCondoCard
-      ]}
-    >
-      <View style={styles.condoImagePlaceholder}>
-        <MaterialCommunityIcons 
-          name="office-building" 
-          size={40} 
-          color={theme.colors.primary} 
-        />
-      </View>
-      
-      <View style={styles.condoDetails}>
-        <View style={styles.condoHeader}>
-          <Text style={styles.condoName} numberOfLines={1}>
-            {condo.name}
-          </Text>
-          {condo.verified && (
-            <MaterialCommunityIcons 
-              name="check-circle" 
-              size={16} 
-              color={theme.colors.primary} 
-            />
-          )}
-        </View>
-        
-        <Text style={styles.condoAddress} numberOfLines={2}>
-          {condo.address}
-        </Text>
-        
-        <View style={styles.condoInfo}>
-          <Chip icon="home" style={styles.infoChip}>
-            {condo.units} Unidades
-          </Chip>
-          <Chip icon="map-marker" style={styles.infoChip}>
-            {condo.blocks} Blocos
-          </Chip>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  // Cancelar e voltar
+  const handleCancel = () => {
+    navigation.goBack();
+  };
 
   return (
-    <ScrollView 
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : null}
       style={styles.container}
-      keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Solicitar Acesso</Text>
-        <Text style={styles.headerSubtitle}>
-          Busque o condomínio para solicitar entrada
-        </Text>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="Buscar condomínio por nome ou endereço"
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          onSubmitEditing={searchCondos}
-          style={styles.searchBar}
-        />
-        <PaperButton 
-          mode="contained" 
-          onPress={searchCondos}
-          style={styles.searchButton}
-        >
-          <MaterialCommunityIcons name="magnify" size={24} />
-        </PaperButton>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator 
-          animating={true} 
-          color={theme.colors.primary} 
-          style={styles.loader} 
-        />
-      ) : (
-        <ScrollView 
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.condoList}
-        >
-          {condos.map(renderCondoCard)}
-        </ScrollView>
-      )}
-
-      {selectedCondo && (
-        <Card style={styles.formCard}>
-          <Card.Title 
-            title={`Solicitar Acesso - ${selectedCondo.name}`}
-            subtitle="Preencha os detalhes da sua entrada"
+      <View style={styles.mainContainer}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Solicitar Acesso</Text>
+          <Text style={styles.subtitle}>
+            Busque o condomínio e informe a unidade para solicitar entrada
+          </Text>
+        </View>
+        
+        {/* Componente de busca de condomínios */}
+        <Card style={styles.searchCard}>
+          <Text style={styles.sectionTitle}>Buscar Condomínio</Text>
+          
+          <GooglePlacesCondoSearch
+            onSelectCondo={handleSelectCondo}
+            style={styles.searchInput}
+            initialLocation={initialLocation}
           />
-          <Card.Content>
-          <Input
-              label="Nome moradore"
-              value={requestDetails.residentName}
-              onChangeText={(text) => setRequestDetails(prev => ({...prev, residentName: text}))}
-              placeholder="Name of resident to visit"
-              autoCapitalize="words"
-            />
-            <Input
-              label="Unidade"
-              value={requestDetails.unit}
-              onChangeText={(text) => setRequestDetails(prev => ({...prev, unit: text}))}
-              placeholder="Número da unidade"
-              keyboardType="numeric"
-            />
-            
-            <Input
-              label="Bloco (opcional)"
-              value={requestDetails.block}
-              onChangeText={(text) => setRequestDetails(prev => ({...prev, block: text}))}
-              placeholder="Bloco do condomínio"
-              autoCapitalize="characters"
-            />
-            
-            <Input
-              label="Observações (opcional)"
-              value={requestDetails.comment}
-              onChangeText={(text) => setRequestDetails(prev => ({...prev, comment: text}))}
-              multiline
-              numberOfLines={3}
-              placeholder="Informações adicionais para o condomínio"
-            />
-            
-            <Button
-              mode="contained"
-              onPress={handleSubmitAccessRequest}
-              loading={requestLoading}
-              disabled={requestLoading}
-              style={styles.submitButton}
-            >
-              Solicitar Acesso
-            </Button>
-          </Card.Content>
+          
+          {formErrors.condo && (
+            <Text style={styles.errorText}>{formErrors.condo}</Text>
+          )}
         </Card>
-      )}
-    </ScrollView>
+        
+        {/* Formulário de solicitação - exibido apenas após selecionar condomínio */}
+        {selectedCondo && (
+          <ScrollView style={styles.formScrollView}>
+            <Card style={styles.formCard}>
+              <View style={styles.selectedCondoHeader}>
+                <MaterialCommunityIcons 
+                  name="office-building" 
+                  size={24} 
+                  color={theme.colors.primary} 
+                />
+                <View style={styles.selectedCondoInfo}>
+                  <Text style={styles.selectedCondoName}>{selectedCondo.name}</Text>
+                  <Text style={styles.selectedCondoAddress}>{selectedCondo.address}</Text>
+                  {selectedCondo.distance && (
+                    <Text style={styles.condoDistance}>
+                      <MaterialCommunityIcons name="map-marker-distance" size={14} color="#1E88E5" />
+                      {' '}{selectedCondo.distance.toFixed(1)} km
+                    </Text>
+                  )}
+                </View>
+              </View>
+              
+              <Divider style={styles.divider} />
+              
+              <Text style={styles.sectionTitle}>Detalhes do Acesso</Text>
+              
+              <Input
+                label="Número da Unidade *"
+                value={requestDetails.unit}
+                onChangeText={(text) => setRequestDetails(prev => ({...prev, unit: text}))}
+                placeholder="Ex: 101"
+                keyboardType="numeric"
+                error={formErrors.unit}
+              />
+              
+              <Input
+                label="Bloco (opcional)"
+                value={requestDetails.block}
+                onChangeText={(text) => setRequestDetails(prev => ({...prev, block: text}))}
+                placeholder="Ex: A"
+                autoCapitalize="characters"
+              />
+              
+              <Input
+                label="Observações (opcional)"
+                value={requestDetails.comment}
+                onChangeText={(text) => setRequestDetails(prev => ({...prev, comment: text}))}
+                placeholder="Informações adicionais para o morador"
+                multiline
+                numberOfLines={3}
+              />
+              
+              <View style={styles.infoContainer}>
+                <MaterialCommunityIcons 
+                  name="information-outline" 
+                  size={20} 
+                  color={theme.colors.primary}
+                  style={styles.infoIcon}
+                />
+                <Text style={styles.infoText}>
+                  Sua solicitação será enviada para aprovação do morador. 
+                  Você receberá uma notificação quando for aprovada.
+                </Text>
+              </View>
+              
+              <View style={styles.buttonContainer}>
+                <Button
+                  mode="contained"
+                  onPress={handleSubmitRequest}
+                  loading={loading}
+                  disabled={loading}
+                  style={styles.submitButton}
+                >
+                  Solicitar Acesso
+                </Button>
+                
+                <Button
+                  mode="outlined"
+                  onPress={() => setSelectedCondo(null)}
+                  disabled={loading}
+                >
+                  Escolher outro condomínio
+                </Button>
+                
+                <Button
+                  mode="text"
+                  onPress={handleCancel}
+                  disabled={loading}
+                  style={styles.cancelButton}
+                >
+                  Cancelar
+                </Button>
+              </View>
+            </Card>
+          </ScrollView>
+        )}
+        
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Enviando solicitação...</Text>
+          </View>
+        )}
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -458,96 +293,111 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  header: {
+  mainContainer: {
+    flex: 1,
     padding: 16,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
-  headerTitle: {
+  header: {
+    marginBottom: 16,
+  },
+  title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 4,
   },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#757575',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'white',
-  },
-  searchBar: {
-    flex: 1,
-    marginRight: 10,
-  },
-  searchButton: {
-    height: 50,
-    justifyContent: 'center',
-  },
-  loader: {
-    marginTop: 20,
-  },
-  condoList: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  condoCard: {
-    width: width * 0.8,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    marginRight: 16,
-    elevation: 3,
-    flexDirection: 'row',
-    padding: 10,
-  },
-  selectedCondoCard: {
-    borderWidth: 2,
-    borderColor: '#1E88E5',
-  },
-  condoImagePlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginRight: 10,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  condoDetails: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  condoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  condoName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    flex: 1,
-    marginRight: 8,
-  },
-  condoAddress: {
+  subtitle: {
     fontSize: 14,
     color: '#757575',
-    marginVertical: 8,
   },
-  condoInfo: {
-    flexDirection: 'row',
+  searchCard: {
+    marginBottom: 16,
+    padding: 16,
   },
-  infoChip: {
-    marginRight: 8,
+  formScrollView: {
+    flex: 1,
   },
   formCard: {
-    margin: 16,
+    marginBottom: 16,
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  searchInput: {
+    marginBottom: 0,
+  },
+  selectedCondoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  selectedCondoInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  selectedCondoName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  selectedCondoAddress: {
+    fontSize: 14,
+    color: '#757575',
+  },
+  condoDistance: {
+    fontSize: 12,
+    color: '#1E88E5',
+    marginTop: 2,
+  },
+  divider: {
+    marginVertical: 16,
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#E3F2FD',
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 16,
+  },
+  infoIcon: {
+    marginRight: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#2196F3',
+  },
+  buttonContainer: {
+    marginTop: 16,
   },
   submitButton: {
-    marginTop: 16,
-  }
+    marginBottom: 12,
+  },
+  cancelButton: {
+    marginTop: 8,
+  },
+  errorText: {
+    color: '#F44336',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 8,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    zIndex: 1000,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#757575',
+  },
 });
 
 export default DriverCondoSearchScreen;

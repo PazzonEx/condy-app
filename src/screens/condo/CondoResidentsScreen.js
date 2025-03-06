@@ -58,12 +58,12 @@ const CondoResidentsScreen = ({ navigation }) => {
       setLoading(true);
       // Buscar moradores do condomínio atual
       const condoResidents = await FirestoreService.queryDocuments('residents', [
-        { field: 'condoId', operator: '==', value: userProfile.id }
+        { field: 'condoId', operator: '==', value: userProfile.id  }
       ]);
       
       setResidents(condoResidents);
     } catch (error) {
-      console.error('Erro ao carregar moradores:', error);
+      //console.error('Erro ao carregar moradores:', error);
       
     } finally {
       setLoading(false);
