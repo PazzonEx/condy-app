@@ -1,12 +1,35 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+// src/screens/auth/ForgotPasswordScreen.js
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  View, 
+  StyleSheet, 
+  Image, 
+  TouchableOpacity, 
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
+  Dimensions
+} from 'react-native';
+import { 
+  Text, 
+  TextInput, 
+  Button, 
+  Surface, 
+  useTheme, 
+  IconButton,
+  Snackbar
+} from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import LottieView from 'lottie-react-native';
+
+// Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
 
-// Componentes personalizados
-import Input from '../../components/Input';
-import Button from '../../components/Button';
-import Card from '../../components/Card';
+// Utilidades
+import { isValidEmail } from '../../utils/validation';
+
+// Constantes
+const { width, height } = Dimensions.get('window');
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const theme = useTheme();
@@ -15,149 +38,365 @@ const ForgotPasswordScreen = ({ navigation }) => {
   // Estados
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [formErrors, setFormErrors] = useState({});
-  const [successMessage, setSuccessMessage] = useState('tent');
-
-  // Validar o formulário
-  const validateForm = () => {
-    const errors = {};
-
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showError, setShowError] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  
+  // Animações
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const successAnim = useRef();
+  
+  // Efeito para animar entrada
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+  
+  // Reproduzir animação de sucesso
+  useEffect(() => {
+    if (emailSent && successAnim.current) {
+      successAnim.current.play();
+    }
+  }, [emailSent]);
+  
+  // Validar email
+  const validateEmail = () => {
     if (!email.trim()) {
-      errors.email = 'Email é obrigatório';
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      errors.email = 'Email inválido';
+      setErrorMessage('Informe seu email');
+      setShowError(true);
+      return false;
     }
-
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    
+    if (!isValidEmail(email)) {
+      setErrorMessage('Email inválido');
+      setShowError(true);
+      return false;
+    }
+    
+    return true;
   };
-
-  // Manipulador para o processo de redefinição de senha
+  
+  // Enviar email de recuperação
   const handleResetPassword = async () => {
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateEmail()) return;
+    
     setLoading(true);
-    setSuccessMessage('');
-    setFormErrors({});
-
+    setShowError(false);
+    
     try {
       await resetPassword(email);
-      setSuccessMessage(
-        'Um link para redefinição de senha foi enviado para o seu email.'
-      );
-      setEmail('');
+      setEmailSent(true);
     } catch (error) {
-      console.error('Erro ao enviar email de redefinição:', error);
-      setFormErrors({
-        general: 'Falha ao enviar email. Verifique se o endereço está correto.'
-      });
+      let errorMsg = 'Erro ao enviar email de recuperação';
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMsg = 'Não há registro de usuário com este email';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
+      }
+      
+      setErrorMessage(errorMsg);
+      setShowError(true);
     } finally {
       setLoading(false);
     }
   };
-
-  return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
-      <View style={styles.container}>
-        {/* Cabeçalho */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Recuperar Senha</Text>
-          <Text style={styles.subtitle}>
-            Informe seu email para receber instruções de recuperação de senha
-          </Text>
-        </View>
-
-        {/* Formulário de recuperação de senha */}
-        <Card style={styles.card}>
-          {formErrors.general ? (
-            <Text style={styles.errorText}>{formErrors.general}</Text>
-          ) : null}
-
-          {successMessage ? (
-            <Text style={styles.successText}>{successMessage}</Text>
-          ) : null}
-
-          <Input
+  
+  // Voltar para tela de login
+  const handleGoBack = () => {
+    navigation.goBack();
+  };
+  
+  // Tentar novamente
+  const handleTryAgain = () => {
+    setEmailSent(false);
+    setEmail('');
+  };
+  
+  // Renderizar formulário de recuperação
+  const renderResetForm = () => (
+    <Animated.View 
+      style={[
+        styles.formContainer,
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }]
+        }
+      ]}
+    >
+      <Surface style={styles.formSurface}>
+        <Text style={styles.title}>Recuperar Senha</Text>
+        <Text style={styles.subtitle}>
+          Informe seu email para receber instruções de recuperação de senha
+        </Text>
+        
+        <View style={styles.inputContainer}>
+          <MaterialCommunityIcons name="email-outline" size={24} color={theme.colors.primary} style={styles.inputIcon} />
+          <TextInput
             label="Email"
             value={email}
             onChangeText={setEmail}
-            error={formErrors.email}
-            keyboardType="email-address"
             autoCapitalize="none"
+            keyboardType="email-address"
+            returnKeyType="send"
+            onSubmitEditing={handleResetPassword}
+            style={styles.input}
+            mode="outlined"
+            outlineColor="#E0E0E0"
+            activeOutlineColor={theme.colors.primary}
+            error={showError && (!email.trim() || !isValidEmail(email))}
           />
-
-          <Button
-            mode="contained"
-            onPress={handleResetPassword}
-            loading={loading}
-            disabled={loading}
-            style={styles.button}
-          >
-            Enviar instruções
-          </Button>
-        </Card>
-
-        {/* Rodapé para navegação para o login */}
-        <View style={styles.footer}>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>
-              Voltar para o login
-            </Text>
-          </TouchableOpacity>
         </View>
+        
+        <Button
+          mode="contained"
+          onPress={handleResetPassword}
+          loading={loading}
+          disabled={loading}
+          style={styles.resetButton}
+          labelStyle={styles.resetButtonLabel}
+          contentStyle={styles.resetButtonContent}
+        >
+          Enviar Instruções
+        </Button>
+        
+        <TouchableOpacity 
+          onPress={handleGoBack}
+          style={styles.backLink}
+        >
+          <Text style={[styles.backLinkText, { color: theme.colors.primary }]}>
+            Voltar para Login
+          </Text>
+        </TouchableOpacity>
+      </Surface>
+    </Animated.View>
+  );
+  
+  // Renderizar mensagem de sucesso
+  const renderSuccessMessage = () => (
+    <Animated.View 
+      style={[
+        styles.successContainer,
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }]
+        }
+      ]}
+    >
+      <Surface style={styles.successSurface}>
+        <View style={styles.animationContainer}>
+          <LottieView
+            ref={successAnim}
+            source={require('../../assets/animations/email-sent.json')}
+            style={styles.successAnimation}
+            autoPlay={false}
+            loop={false}
+          />
+        </View>
+        
+        <Text style={styles.successTitle}>Email Enviado!</Text>
+        <Text style={styles.successText}>
+          Enviamos as instruções de recuperação de senha para:
+        </Text>
+        <Text style={styles.successEmail}>{email}</Text>
+        <Text style={styles.instructionText}>
+          Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.
+          Se não encontrar o email, verifique também sua pasta de spam.
+        </Text>
+        
+        <Button
+          mode="contained"
+          onPress={handleGoBack}
+          style={styles.loginButton}
+          labelStyle={styles.loginButtonLabel}
+        >
+          Voltar para Login
+        </Button>
+        
+        <TouchableOpacity 
+          onPress={handleTryAgain}
+          style={styles.tryAgainLink}
+        >
+          <Text style={[styles.tryAgainText, { color: theme.colors.primary }]}>
+            Tentar com outro email
+          </Text>
+        </TouchableOpacity>
+      </Surface>
+    </Animated.View>
+  );
+  
+  return (
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : null}
+      style={styles.container}
+    >
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={handleGoBack}
+          style={styles.backButton}
+        />
       </View>
-    </ScrollView>
+      
+      {emailSent ? renderSuccessMessage() : renderResetForm()}
+      
+      {/* Snackbar para Erros */}
+      <Snackbar
+        visible={showError}
+        onDismiss={() => setShowError(false)}
+        duration={3000}
+        style={styles.errorSnackbar}
+      >
+        {errorMessage}
+      </Snackbar>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-  },
   container: {
     flex: 1,
-    padding: 20,
-    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
   },
   header: {
-    alignItems: 'center',
-    marginVertical: 20,
+    flexDirection: 'row',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    margin: 0,
+  },
+  formContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+  },
+  formSurface: {
+    padding: 24,
+    borderRadius: 12,
+    elevation: 4,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 5,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#777',
+    color: '#757575',
     textAlign: 'center',
-    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    padding: 10,
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  button: {
-    marginTop: 10,
+  inputIcon: {
+    marginRight: 12,
+    marginTop: 8,
   },
-  footer: {
-    marginTop: 20,
+  input: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  resetButton: {
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  resetButtonLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    paddingVertical: 4,
+  },
+  resetButtonContent: {
+    height: 48,
+  },
+  backLink: {
+    alignSelf: 'center',
+  },
+  backLinkText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  successContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+  },
+  successSurface: {
+    padding: 24,
+    borderRadius: 12,
+    elevation: 4,
     alignItems: 'center',
   },
-  errorText: {
-    color: '#f13a59',
-    textAlign: 'center',
-    marginBottom: 10,
+  animationContainer: {
+    width: 150,
+    height: 150,
+    marginVertical: 16,
+  },
+  successAnimation: {
+    width: '100%',
+    height: '100%',
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#4CAF50',
   },
   successText: {
-    color: '#4CAF50',
+    fontSize: 16,
+    color: '#757575',
+    marginBottom: 8,
     textAlign: 'center',
-    marginBottom: 10,
+  },
+  successEmail: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#212121',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  instructionText: {
+    fontSize: 14,
+    color: '#757575',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  loginButton: {
+    borderRadius: 8,
+    width: '100%',
+    marginBottom: 16,
+  },
+  loginButtonLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    paddingVertical: 4,
+  },
+  tryAgainLink: {
+    alignSelf: 'center',
+  },
+  tryAgainText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  errorSnackbar: {
+    backgroundColor: '#F44336',
   },
 });
 

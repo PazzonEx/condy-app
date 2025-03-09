@@ -27,6 +27,18 @@
     "extra": {
       "googlePlacesApiKey": "AIzaSyDLCX6mp0wrb48jXfWk2goAvpEy-YUNwrw"
       
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O aplicativo precisa acessar suas fotos para upload de documentos.",
+          "cameraPermission": "O aplicativo precisa acessar sua câmera para tirar fotos de documentos."
+        }
+      ],
+      "expo-document-picker",
+      "expo-file-system",
+      "expo-location"
+    ]
   }
 }

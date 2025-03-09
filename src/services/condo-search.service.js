@@ -4,693 +4,377 @@ import { auth } from '../config/firebase';
 import { calculateDistance } from '../utils/location';
 import Constants from 'expo-constants';
 
-/**
- * Serviço de busca e gerenciamento de condomínios
- */
 const CondoSearchService = {
- /**
- * Busca avançada de condomínios com suporte a Google Places API 2025
- * @param {Object} searchParams - Parâmetros de busca
- * @returns {Promise<Array>} Lista de condomínios encontrados
- */
- async searchCondos(searchParams = {}) {
-  try {
-    console.log("Iniciando busca de condomínios no Firestore:", searchParams);
-    
-    const {
-      query = '',
-      maxResults = 10,
-      onlyActive = true,
-      userLocation = null,
-      filterType = 'all',
-    } = searchParams;
+  /**
+   * Busca avançada de condomínios com múltiplos métodos de identificação
+   * @param {Object} searchParams - Parâmetros de busca
+   * @returns {Promise<Array>} Lista de condomínios encontrados
+   */
+  async searchCondos(searchParams = {}) {
+    try {
+      console.log("Iniciando busca de condomínios:", searchParams);
+      
+      const {
+        query = '',
+        maxResults = 10,
+        onlyActive = true,
+        userLocation = null,
+        filterType = 'all',
+        searchType = 'all', // 'all', 'name', 'address', 'id'
+      } = searchParams;
 
+      // Estratégia 1: Buscar por placeId se parece ser um ID do Google Places
+      if (query.length > 20 && query.includes('-')) {
+        const condoByPlaceId = await this.findCondoByPlaceId(query);
+        if (condoByPlaceId) {
+          return [condoByPlaceId];
+        }
+      }
+
+      // Estratégia 2: Buscar no Firestore
+      let firestoreResults = await this.searchFirestoreCondos(query, onlyActive);
+      
+      // Aplicar filtros adicionais baseados no searchType
+      if (searchType === 'name') {
+        firestoreResults = firestoreResults.filter(condo => 
+          (condo.name || '').toLowerCase().includes(query.toLowerCase())
+        );
+      } else if (searchType === 'address') {
+        firestoreResults = firestoreResults.filter(condo => 
+          (condo.address || '').toLowerCase().includes(query.toLowerCase())
+        );
+      }
+
+      // Adicionar distância se localização do usuário estiver disponível
+      if (userLocation) {
+        firestoreResults = this.addDistanceToCondos(firestoreResults, userLocation);
+        
+        // Ordenar por distância se filtro for "nearby"
+        if (filterType === 'nearby') {
+          firestoreResults.sort((a, b) => {
+            const distA = a.distance !== undefined ? a.distance : Infinity;
+            const distB = b.distance !== undefined ? b.distance : Infinity;
+            return distA - distB;
+          });
+        }
+      }
+      
+      // Estratégia 3: Se poucos resultados e não é um ID específico, complementar com Google Places
+      if (firestoreResults.length < 3 && searchType !== 'id' && query.length > 3) {
+        const googleResults = await this.searchGooglePlaces(query, userLocation);
+        
+        // Remover duplicatas (comparando por placeId, nome+endereço, ou coordenadas)
+        const combinedResults = this.mergeSearchResults(firestoreResults, googleResults);
+        
+        // Ordenar resultados
+        return this.sortSearchResults(combinedResults, filterType, maxResults);
+      }
+      
+      // Ordenação padrão e limite de resultados
+      return this.sortSearchResults(firestoreResults, filterType, maxResults);
+    } catch (error) {
+      console.error('Erro na busca de condomínios:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Busca condomínios no Firestore
+   * @param {string} query - Termo de busca
+   * @param {boolean} onlyActive - Filtrar apenas condomínios ativos
+   * @returns {Promise<Array>} Lista de condomínios
+   */
+  async searchFirestoreCondos(query, onlyActive = true) {
     // Buscar todos os condomínios
     const allCondos = await FirestoreService.getCollection('condos');
-    console.log(`Total de condomínios na base: ${allCondos.length}`);
     
     // Aplicar filtros
-    let filteredCondos = allCondos.filter(condo => {
+    return allCondos.filter(condo => {
       // Filtro de status ativo
       if (onlyActive && condo.status !== 'active') return false;
       
-      // Busca textual (nome, endereço)
+      // Busca textual (nome, endereço, ID)
       if (query.trim()) {
-        // Dividir a consulta em termos para busca mais flexível
         const queryTerms = query.toLowerCase().trim().split(/\s+/);
         const condoName = (condo.name || '').toLowerCase();
         const condoAddress = (condo.address || '').toLowerCase();
+        const condoId = (condo.id || '').toLowerCase();
         
         // Verificar se todos os termos estão presentes em algum campo
         return queryTerms.every(term => 
-          condoName.includes(term) || condoAddress.includes(term)
+          condoName.includes(term) || 
+          condoAddress.includes(term) || 
+          condoId.includes(term) ||
+          (condo.placeId && condo.placeId.toLowerCase().includes(term))
         );
       }
       
       return true;
     });
-    
-    console.log(`Condomínios filtrados do Firestore: ${filteredCondos.length}`);
+  },
 
-    // Adicionar distância se localização do usuário estiver disponível
-    if (userLocation) {
-      filteredCondos = filteredCondos.map(condo => {
-        if (condo.latitude && condo.longitude) {
-          const distance = this.calculateDistance(
-            userLocation.latitude,
-            userLocation.longitude,
-            condo.latitude,
-            condo.longitude
-          );
-          return { ...condo, distance };
-        }
-        return condo;
+  /**
+   * Busca condomínio por Place ID
+   * @param {string} placeId - ID do Google Places
+   * @returns {Promise<Object|null>} Condomínio encontrado ou null
+   */
+  async findCondoByPlaceId(placeId) {
+    try {
+      // Verificar se é um placeId válido
+      if (!placeId || typeof placeId !== 'string') return null;
+      
+      const condos = await FirestoreService.queryDocuments(
+        'condos',
+        [{ field: 'placeId', operator: '==', value: placeId }]
+      );
+      
+      return condos.length > 0 ? { ...condos[0], inSystem: true } : null;
+    } catch (error) {
+      console.error('Erro ao buscar condomínio por placeId:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Adiciona informação de distância aos condomínios
+   * @param {Array} condos - Lista de condomínios
+   * @param {Object} userLocation - Localização do usuário {latitude, longitude}
+   * @returns {Array} Condomínios com distância calculada
+   */
+  addDistanceToCondos(condos, userLocation) {
+    return condos.map(condo => {
+      if (condo.latitude && condo.longitude) {
+        const distance = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          condo.latitude,
+          condo.longitude
+        );
+        return { ...condo, distance };
+      }
+      return condo;
+    });
+  },
+
+  /**
+   * Busca no Google Places API
+   * @param {string} query - Termo de busca
+   * @param {Object} userLocation - Localização do usuário (opcional)
+   * @returns {Promise<Array>} Lista de resultados do Google Places
+   */
+  async searchGooglePlaces(query, userLocation = null) {
+    try {
+      const googleApiKey = Constants.expoConfig?.extra?.googlePlacesApiKey;
+      
+      if (!googleApiKey) {
+        console.warn('Google Places API Key não configurada');
+        return [];
+      }
+      
+      // Coordenadas para centralizar a busca (se disponível)
+      const locationParam = userLocation ? 
+        `&location=${userLocation.latitude},${userLocation.longitude}&radius=5000` : 
+        '';
+      
+      // URL da API - usando textSearch para melhor corresponder a nomes de condomínios
+      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&type=premise,establishment${locationParam}&key=${googleApiKey}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status !== 'OK') {
+        console.warn('Google Places API erro:', data.status);
+        return [];
+      }
+      
+      // Obter todos os condomínios do sistema para comparação
+      const systemCondos = await this.getAllSystemCondos();
+      
+      // Formatar resultados e verificar se já estão no sistema
+      return data.results.map(place => {
+        // Verificar se já existe no sistema
+        const existingCondo = this.findMatchingSystemCondo(place, systemCondos);
+        
+        return {
+          id: existingCondo ? existingCondo.id : place.place_id,
+          name: place.name,
+          address: place.formatted_address,
+          latitude: place.geometry?.location?.lat,
+          longitude: place.geometry?.location?.lng,
+          placeId: place.place_id,
+          fromGoogle: true,
+          inSystem: !!existingCondo,
+          distance: null,
+          // Se já existe no sistema, manter o ID original
+          ...(existingCondo || {})
+        };
+      });
+    } catch (error) {
+      console.error('Erro na busca do Google Places:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Busca todos os condomínios do sistema
+   * @returns {Promise<Array>} Lista de condomínios
+   */
+  async getAllSystemCondos() {
+    try {
+      const allCondos = await FirestoreService.getCollection('condos');
+      return allCondos.filter(condo => 
+        condo.status === 'active' && 
+        (condo.latitude || condo.placeId) // Filtrar apenas condomínios com coordenadas ou placeId
+      );
+    } catch (error) {
+      console.error('Erro ao buscar todos os condomínios:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Encontra condomínio correspondente no sistema
+   * @param {Object} place - Local do Google Places
+   * @param {Array} systemCondos - Condomínios do sistema
+   * @returns {Object|null} Condomínio correspondente ou null
+   */
+  findMatchingSystemCondo(place, systemCondos) {
+    // Estratégia 1: Verificar pelo placeId
+    if (place.place_id) {
+      const matchByPlaceId = systemCondos.find(condo => 
+        condo.placeId === place.place_id
+      );
+      if (matchByPlaceId) return matchByPlaceId;
+    }
+    
+    // Estratégia 2: Verificar por coordenadas (com precisão limitada)
+    if (place.geometry?.location?.lat && place.geometry?.location?.lng) {
+      const COORDINATE_PRECISION = 4; // Casas decimais para comparação
+      const placeLat = place.geometry.location.lat.toFixed(COORDINATE_PRECISION);
+      const placeLng = place.geometry.location.lng.toFixed(COORDINATE_PRECISION);
+      
+      const matchByCoordinates = systemCondos.find(condo => {
+        if (!condo.latitude || !condo.longitude) return false;
+        
+        const condoLat = condo.latitude.toFixed(COORDINATE_PRECISION);
+        const condoLng = condo.longitude.toFixed(COORDINATE_PRECISION);
+        
+        return placeLat === condoLat && placeLng === condoLng;
       });
       
-      // Ordenar por distância se filtro for "nearby"
-      if (filterType === 'nearby') {
-        filteredCondos.sort((a, b) => {
-          const distA = a.distance !== undefined ? a.distance : Infinity;
-          const distB = b.distance !== undefined ? b.distance : Infinity;
-          return distA - distB;
-        });
+      if (matchByCoordinates) return matchByCoordinates;
+    }
+    
+    // Estratégia 3: Verificar por nome e endereço similar
+    if (place.name && place.formatted_address) {
+      const placeName = place.name.toLowerCase();
+      const placeAddress = place.formatted_address.toLowerCase();
+      
+      // Critérios para considerar um match:
+      // 1. Nome exato + endereço parcial, ou
+      // 2. Nome parcial + endereço exato
+      
+      const matchByNameAndAddress = systemCondos.find(condo => {
+        const condoName = (condo.name || '').toLowerCase();
+        const condoAddress = (condo.address || '').toLowerCase();
+        
+        const nameExactMatch = condoName === placeName;
+        const namePartialMatch = condoName.includes(placeName) || placeName.includes(condoName);
+        
+        const addressExactMatch = condoAddress === placeAddress;
+        const addressPartialMatch = condoAddress.includes(placeAddress) || placeAddress.includes(condoAddress);
+        
+        return (nameExactMatch && addressPartialMatch) || (namePartialMatch && addressExactMatch);
+      });
+      
+      if (matchByNameAndAddress) return matchByNameAndAddress;
+    }
+    
+    return null;
+  },
+
+  /**
+   * Mescla resultados de diferentes fontes removendo duplicatas
+   * @param {Array} firestoreResults - Resultados do Firestore
+   * @param {Array} googleResults - Resultados do Google Places
+   * @returns {Array} Resultados combinados sem duplicatas
+   */
+  mergeSearchResults(firestoreResults, googleResults) {
+    // Manter todos os resultados do Firestore
+    const combinedResults = [...firestoreResults];
+    
+    // Adicionar resultados do Google Places que não existem no Firestore
+    for (const googleResult of googleResults) {
+      // Verificar duplicatas por ID
+      const duplicateById = combinedResults.some(item => 
+        item.id === googleResult.id || 
+        (item.placeId && item.placeId === googleResult.placeId)
+      );
+      
+      if (!duplicateById) {
+        // Verificar duplicatas por nome e endereço
+        const duplicateByNameAndAddress = combinedResults.some(item => 
+          item.name === googleResult.name && 
+          item.address === googleResult.address
+        );
+        
+        if (!duplicateByNameAndAddress) {
+          // Verificar duplicatas por coordenadas
+          const duplicateByCoordinates = combinedResults.some(item => {
+            if (!item.latitude || !item.longitude || 
+                !googleResult.latitude || !googleResult.longitude) {
+              return false;
+            }
+            
+            const COORDINATE_PRECISION = 4;
+            return item.latitude.toFixed(COORDINATE_PRECISION) === googleResult.latitude.toFixed(COORDINATE_PRECISION) &&
+                  item.longitude.toFixed(COORDINATE_PRECISION) === googleResult.longitude.toFixed(COORDINATE_PRECISION);
+          });
+          
+          if (!duplicateByCoordinates) {
+            combinedResults.push(googleResult);
+          }
+        }
       }
     }
     
-    // Ordenação padrão por nome
-    if (filterType !== 'nearby') {
-      filteredCondos.sort((a, b) => {
+    return combinedResults;
+  },
+
+  /**
+   * Ordena e limita os resultados da busca
+   * @param {Array} results - Resultados da busca
+   * @param {string} filterType - Tipo de filtro ('all', 'nearby', 'recent')
+   * @param {number} maxResults - Número máximo de resultados
+   * @returns {Array} Resultados ordenados e limitados
+   */
+  sortSearchResults(results, filterType, maxResults) {
+    let sortedResults = [...results];
+    
+    // Ordenação baseada no filtro
+    if (filterType === 'nearby') {
+      // Já ordenado por distância anteriormente
+    } else if (filterType === 'recent') {
+      // Priorizar condomínios marcados como recentes
+      sortedResults.sort((a, b) => {
+        if (a.isRecent && !b.isRecent) return -1;
+        if (!a.isRecent && b.isRecent) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+    } else {
+      // Ordenação padrão por nome
+      sortedResults.sort((a, b) => {
+        // Priorizar condomínios no sistema
+        if (a.inSystem && !b.inSystem) return -1;
+        if (!a.inSystem && b.inSystem) return 1;
+        
+        // Depois ordenar por nome
         return (a.name || '').localeCompare(b.name || '');
       });
     }
     
     // Limitar resultados
-    const limitedResults = filteredCondos.slice(0, maxResults);
-    console.log(`Resultados finais: ${limitedResults.length}`);
-    
-    return limitedResults;
-  } catch (error) {
-    console.error('Erro na busca de condomínios:', error);
-    return [];
-  }
-},
-
-// Método auxiliar para calcular distância
-calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Raio da Terra em km
-  const dLat = this.toRad(lat2 - lat1);
-  const dLon = this.toRad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-},
-
-// Converter para radianos
-toRad(value) {
-  return value * Math.PI / 180;
-},
-
-  /**
-   * Buscar condomínios por endereço utilizando Google Places API
-   * @param {string} query - Endereço para busca
-   * @param {number} maxResults - Número máximo de resultados
-   * @returns {Promise<Array>} Lista de condomínios encontrados
-   */
-  async searchCondosByAddress(query, maxResults = 10) {
-    try {
-      // Verificar se temos API key do Google configurada
-      const googleApiKey = Constants.expoConfig?.extra?.googlePlacesApiKey;
-      console.log("ete é meu tokem",googleApiKey)
-      
-      if (!googleApiKey) {
-        console.warn('Google Places API Key não configurada. Usando busca padrão.');
-        // Fallback para busca padrão
-        return this.searchCondos({ query, maxResults });
-      }
-      
-      // Implementação da busca utilizando Google Places API
-      const encodedQuery = encodeURIComponent(query);
-      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=${googleApiKey}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.status !== 'OK') {
-        throw new Error(`Google Places API erro: ${data.status}`);
-      }
-      
-      // Extrair resultados
-      const places = data.results.slice(0, maxResults);
-      
-      // Verificar quais lugares já existem como condomínios na nossa base
-      const existingCondos = await this.findExistingCondosByPlaceIds(
-        places.map(place => place.place_id)
-      );
-      
-      // Combinar resultados da API com nossos condomínios cadastrados
-      const results = await Promise.all(places.map(async place => {
-        // Verificar se já existe este condomínio no sistema
-        const existingCondo = existingCondos.find(
-          condo => condo.placeId === place.place_id
-        );
-        
-        if (existingCondo) {
-          return {
-            ...existingCondo,
-            fromGooglePlaces: false
-          };
-        }
-        
-        // Criar um novo objeto com os dados do Google Places
-        return {
-          id: place.place_id, // Usar place_id como identificador temporário
-          name: place.name,
-          address: place.formatted_address,
-          city: this.extractCityFromAddress(place.formatted_address),
-          state: this.extractStateFromAddress(place.formatted_address),
-          latitude: place.geometry?.location?.lat || null,
-          longitude: place.geometry?.location?.lng || null,
-          verified: false,
-          fromGooglePlaces: true, // Indicar que veio do Google Places
-          placeId: place.place_id
-        };
-      }));
-      
-      return results;
-    } catch (error) {
-      console.error('Erro na busca de condomínios por endereço:', error);
-      // Fallback para busca padrão
-      return this.searchCondos({ query, maxResults });
-    }
-  },
-
-  /**
-   * Extrair cidade do endereço formatado do Google Places
-   * @param {string} formattedAddress - Endereço formatado
-   * @returns {string} Nome da cidade
-   */
-  extractCityFromAddress(formattedAddress) {
-    if (!formattedAddress) return '';
-    
-    // Tenta extrair a cidade do formato "Cidade, Estado, País"
-    const parts = formattedAddress.split(',');
-    
-    if (parts.length >= 2) {
-      return parts[parts.length - 3]?.trim() || '';
-    }
-    
-    return '';
-  },
-
-  /**
-   * Extrair estado do endereço formatado do Google Places
-   * @param {string} formattedAddress - Endereço formatado
-   * @returns {string} Nome do estado
-   */
-  extractStateFromAddress(formattedAddress) {
-    if (!formattedAddress) return '';
-    
-    // Tenta extrair o estado do formato "Cidade, Estado, País"
-    const parts = formattedAddress.split(',');
-    
-    if (parts.length >= 2) {
-      return parts[parts.length - 2]?.trim() || '';
-    }
-    
-    return '';
-  },
-
-  /**
-   * Buscar condomínios existentes por IDs de lugares do Google Places
-   * @param {Array<string>} placeIds - Array de IDs de lugares
-   * @returns {Promise<Array>} Condomínios encontrados
-   */// Verifique se esta função está realmente retornando resultados
-async findExistingCondosByPlaceIds(placeIds) {
-  try {
-    if (!placeIds || placeIds.length === 0) {
-      console.log("Nenhum placeId fornecido para busca");
-      return [];
-    }
-
-    console.log("Buscando condomínios com placeIds:", placeIds);
-    
-    // Buscar condomínios que têm placeId no array de placeIds
-    const existingCondos = await FirestoreService.queryDocuments(
-      'condos',
-      [{ field: 'placeId', operator: 'in', value: placeIds }]
-    );
-    
-    console.log("Condomínios encontrados:", existingCondos.length);
-    return existingCondos;
-  } catch (error) {
-    console.error('Erro ao buscar condomínios por placeIds:', error);
-    return [];
-  }
-},
-
-  /**
-   * Buscar condomínios próximos a uma localização
-   * @param {string} query - Termo de busca (opcional)
-   * @param {Object} userLocation - Localização do usuário {latitude, longitude}
-   * @param {number} maxDistance - Distância máxima em km
-   * @param {number} maxResults - Número máximo de resultados
-   * @returns {Promise<Array>} Lista de condomínios próximos
-   */
-  async searchCondosByLocation(query, userLocation, maxDistance, maxResults = 20) {
-    try {
-      // Firestore não tem busca por geolocalização nativa no cliente
-      // Vamos buscar todos e filtrar manualmente
-      
-      // Busca básica por query primeiro
-      const initialParams = {
-        query,
-        maxResults: 100, // Buscar mais para depois filtrar por distância
-        onlyActive: true
-      };
-      
-      const condos = await this.searchCondos(initialParams);
-      
-      // Filtrar por distância
-      const nearbyCondos = condos
-        .filter(condo => {
-          // Verificar se tem coordenadas
-          if (!condo.latitude || !condo.longitude) return false;
-          
-          // Calcular distância
-          const distance = calculateDistance(
-            userLocation.latitude,
-            userLocation.longitude,
-            condo.latitude,
-            condo.longitude
-          );
-          
-          // Adicionar distância ao objeto
-          condo.distance = distance;
-          
-          // Filtrar por distância máxima
-          return distance <= maxDistance;
-        })
-        // Ordenar por distância
-        .sort((a, b) => a.distance - b.distance)
-        // Limitar resultados
-        .slice(0, maxResults);
-      
-      return nearbyCondos;
-    } catch (error) {
-      console.error('Erro na busca de condomínios por localização:', error);
-      return [];
-    }
-  },
-
-  /**
-   * Obter detalhes de um condomínio específico
-   * @param {string} condoId - ID do condomínio
-   * @returns {Promise<Object>} Detalhes do condomínio
-   */
-  async getCondoDetails(condoId) {
-    try {
-      if (!condoId) {
-        throw new Error('ID do condomínio não fornecido');
-      }
-
-      // Se for um Place ID do Google, buscar detalhes e converter
-      if (condoId.startsWith('ChI') || condoId.length > 30) {
-        return this.getCondoDetailsFromPlaceId(condoId);
-      }
-
-      const condo = await FirestoreService.getDocument('condos', condoId);
-      
-      if (!condo) {
-        throw new Error('Condomínio não encontrado');
-      }
-
-      // Buscar informações adicionais
-      const [residents, drivers] = await Promise.all([
-        FirestoreService.queryDocuments('residents', [
-          { field: 'condoId', operator: '==', value: condoId }
-        ]),
-        FirestoreService.queryDocuments('drivers', [
-          { field: 'condosServed', operator: 'array-contains', value: condoId }
-        ])
-      ]);
-
-      return {
-        id: condo.id,
-        name: condo.name || '',
-        address: condo.address || '',
-        units: condo.units || 0,
-        blocks: condo.blocks || 0,
-        phone: condo.phone || '',
-        email: condo.email || '',
-        coverImageUrl: condo.coverImageUrl || null,
-        verified: !!condo.verified,
-        accessRules: condo.accessRules || [],
-        latitude: condo.latitude || null,
-        longitude: condo.longitude || null,
-        socialMediaLinks: condo.socialMediaLinks || {},
-        stats: {
-          totalResidents: residents.length,
-          totalDrivers: drivers.length,
-          activeRequests: 0 // Você pode adicionar lógica para contar solicitações ativas
-        }
-      };
-    } catch (error) {
-      console.error('Erro ao buscar detalhes do condomínio:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Obter detalhes de um condomínio a partir de um Place ID do Google
-   * @param {string} placeId - Place ID do Google
-   * @returns {Promise<Object>} Detalhes do condomínio
-   */
-  async getCondoDetailsFromPlaceId(placeId) {
-    try {
-      // Verificar se o condomínio já existe no sistema
-      const existingCondos = await this.findExistingCondosByPlaceIds([placeId]);
-      
-      if (existingCondos.length > 0) {
-        // Se já existe, usar o ID e buscar detalhes completos
-        return this.getCondoDetails(existingCondos[0].id);
-      }
-      
-      // Se não existe no sistema, buscar detalhes do Google Places
-      const googleApiKey = Constants.expoConfig?.extra?.googlePlacesApiKey;
-      
-      if (!googleApiKey) {
-        throw new Error('Google Places API Key não configurada');
-      }
-      
-      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_address,geometry,types,formatted_phone_number,website&key=${googleApiKey}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.status !== 'OK') {
-        throw new Error(`Google Places API erro: ${data.status}`);
-      }
-      
-      const place = data.result;
-      
-      // Verificar se é provavelmente um condomínio
-      const isCondoType = place.types?.some(type => 
-        ['apartment', 'residential', 'lodging', 'establishment', 'premise'].includes(type)
-      );
-      
-      const condoDetails = {
-        id: placeId,
-        name: place.name,
-        address: place.formatted_address,
-        city: this.extractCityFromAddress(place.formatted_address),
-        state: this.extractStateFromAddress(place.formatted_address),
-        phone: place.formatted_phone_number || '',
-        email: '',
-        website: place.website || '',
-        latitude: place.geometry?.location?.lat || null,
-        longitude: place.geometry?.location?.lng || null,
-        coverImageUrl: null,
-        verified: false,
-        fromGooglePlaces: true,
-        placeId: placeId,
-        isCondoType,
-        accessRules: [],
-        stats: {
-          totalResidents: 0,
-          totalDrivers: 0,
-          activeRequests: 0
-        }
-      };
-      
-      return condoDetails;
-    } catch (error) {
-      console.error('Erro ao buscar detalhes do Place ID:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Verificar se o motorista pode solicitar acesso a um condomínio
-   * @param {string} condoId - ID do condomínio
-   * @returns {Promise<boolean>} Indica se o motorista pode solicitar acesso
-   */
-  async canDriverRequestAccess(condoId) {
-    try {
-      // Verificar se há usuário autenticado
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      // Buscar dados do motorista
-      const driverDoc = await FirestoreService.getDocument('drivers', user.uid);
-      
-      if (!driverDoc) {
-        throw new Error('Perfil de motorista não encontrado');
-      }
-
-      // Verificar status do motorista
-      if (driverDoc.status !== 'active') {
-        return false;
-      }
-
-      // Verificar se o motorista está disponível
-      if (driverDoc.isAvailable === false) {
-        return false;
-      }
-
-      // Buscar detalhes do condomínio
-      const condoDoc = await FirestoreService.getDocument('condos', condoId);
-      
-      if (!condoDoc || condoDoc.status !== 'active') {
-        return false;
-      }
-
-      // Verificar se o condomínio aceita solicitações externas
-      if (condoDoc.allowExternalRequests === false) {
-        return false;
-      }
-
-      // Verificar se o condomínio tem limite de solicitações e se atingiu o limite
-      if (condoDoc.subscription?.maxRequests) {
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-        
-        // Contar solicitações deste mês
-        const requests = await FirestoreService.queryDocuments('access_requests', [
-          { field: 'condoId', operator: '==', value: condoId },
-          { field: 'createdAt', operator: '>=', value: new Date(currentYear, currentMonth, 1) }
-        ]);
-        
-        if (requests.length >= condoDoc.subscription.maxRequests) {
-          return false;
-        }
-      }
-
-      // Verificar se o motorista está na lista negra do condomínio
-      if (condoDoc.blacklistedDrivers && 
-          Array.isArray(condoDoc.blacklistedDrivers) && 
-          condoDoc.blacklistedDrivers.includes(user.uid)) {
-        return false;
-      }
-
-      // Se passou por todas as verificações, pode solicitar acesso
-      return true;
-    } catch (error) {
-      console.error('Erro ao verificar acesso do motorista:', error);
-      return false;
-    }
-  },
-
-  /**
-   * Obter condomínios recentes do motorista
-   * @param {number} limit - Limite de resultados
-   * @returns {Promise<Array>} Lista de condomínios recentes
-   */
-  async getRecentCondos(limit = 5) {
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      // Buscar solicitações recentes do motorista
-      const recentRequests = await FirestoreService.queryDocuments(
-        'access_requests',
-        [{ field: 'driverId', operator: '==', value: user.uid }],
-        { field: 'createdAt', direction: 'desc' },
-        20
-      );
-
-      // Extrair IDs únicos de condomínios
-      const uniqueCondoIds = [...new Set(recentRequests.map(req => req.condoId))];
-      
-      // Limitar ao número desejado
-      const limitedIds = uniqueCondoIds.slice(0, limit);
-      
-      // Buscar detalhes dos condomínios
-      const condos = await Promise.all(
-        limitedIds.map(id => this.getCondoDetails(id).catch(err => null))
-      );
-      
-      // Filtrar nulos (erros de busca)
-      return condos.filter(condo => condo !== null);
-    } catch (error) {
-      console.error('Erro ao buscar condomínios recentes:', error);
-      return [];
-    }
-  },
-
-  /**
-   * Buscar condomínios favoritos do motorista
-   * @returns {Promise<Array>} Lista de condomínios favoritos
-   */
-  async getFavoriteCondos() {
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      // Buscar dados do motorista
-      const driverDoc = await FirestoreService.getDocument('drivers', user.uid);
-      
-      if (!driverDoc || !driverDoc.favoriteCondos || !Array.isArray(driverDoc.favoriteCondos)) {
-        return [];
-      }
-
-      // Buscar detalhes dos condomínios favoritos
-      const condos = await Promise.all(
-        driverDoc.favoriteCondos.map(id => this.getCondoDetails(id).catch(err => null))
-      );
-      
-      // Filtrar nulos (erros de busca)
-      return condos.filter(condo => condo !== null);
-    } catch (error) {
-      console.error('Erro ao buscar condomínios favoritos:', error);
-      return [];
-    }
-  },
-
-  /**
-   * Adicionar ou remover condomínio dos favoritos
-   * @param {string} condoId - ID do condomínio
-   * @param {boolean} favorite - true para adicionar, false para remover
-   * @returns {Promise<boolean>} Sucesso da operação
-   */
-  async toggleFavoriteCondo(condoId, favorite) {
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      // Buscar dados do motorista
-      const driverDoc = await FirestoreService.getDocument('drivers', user.uid);
-      
-      if (!driverDoc) {
-        throw new Error('Perfil de motorista não encontrado');
-      }
-
-      // Criar array de favoritos se não existir
-      const favoriteCondos = driverDoc.favoriteCondos || [];
-      
-      // Adicionar ou remover do array
-      let updatedFavorites;
-      if (favorite && !favoriteCondos.includes(condoId)) {
-        updatedFavorites = [...favoriteCondos, condoId];
-      } else if (!favorite && favoriteCondos.includes(condoId)) {
-        updatedFavorites = favoriteCondos.filter(id => id !== condoId);
-      } else {
-        // Não precisou mudar
-        return true;
-      }
-      
-      // Atualizar no Firestore
-      await FirestoreService.updateDocument('drivers', user.uid, {
-        favoriteCondos: updatedFavorites
-      });
-      
-      return true;
-    } catch (error) {
-      console.error('Erro ao atualizar favoritos:', error);
-      return false;
-    }
-  },
-
-  /**
-   * Verificar se um condomínio está nos favoritos
-   * @param {string} condoId - ID do condomínio
-   * @returns {Promise<boolean>} true se estiver nos favoritos
-   */
-  async isCondoFavorite(condoId) {
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        return false;
-      }
-
-      const driverDoc = await FirestoreService.getDocument('drivers', user.uid);
-      
-      if (!driverDoc || !driverDoc.favoriteCondos) {
-        return false;
-      }
-      
-      return driverDoc.favoriteCondos.includes(condoId);
-    } catch (error) {
-      console.error('Erro ao verificar favorito:', error);
-      return false;
-    }
-  },
-
-  /**
-   * Registrar um condomínio que não existe no sistema
-   * @param {Object} condoData - Dados do condomínio
-   * @returns {Promise<Object>} Condomínio criado
-   */
-  async registerNewCondo(condoData) {
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error('Usuário não autenticado');
-      }
-
-      // Verificar dados obrigatórios
-      if (!condoData.name || !condoData.address) {
-        throw new Error('Nome e endereço são obrigatórios');
-      }
-
-      // Dados para criar o condomínio
-      const newCondoData = {
-        name: condoData.name,
-        address: condoData.address,
-        city: condoData.city || '',
-        state: condoData.state || '',
-        latitude: condoData.latitude || null,
-        longitude: condoData.longitude || null,
-        placeId: condoData.placeId || null,
-        phone: condoData.phone || '',
-        email: condoData.email || '',
-        status: 'pending_approval', // Pendente de aprovação
-        verified: false,
-        createdBy: user.uid,
-        createdAt: new Date(),
-        createdByType: 'driver', // Indica que foi criado por um motorista
-        units: condoData.units || 0,
-        blocks: condoData.blocks || 0
-      };
-
-      // Criar no Firestore
-      const newCondo = await FirestoreService.createDocument('condos', newCondoData);
-
-      return newCondo;
-    } catch (error) {
-      console.error('Erro ao registrar novo condomínio:', error);
-      throw error;
-    }
+    return sortedResults.slice(0, maxResults);
   }
 };
 

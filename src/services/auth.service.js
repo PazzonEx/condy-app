@@ -10,7 +10,8 @@ import {
   reauthenticateWithCredential
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
-
+import FirestoreService from "./firestore.service"
+    
 // Serviço de autenticação
 const AuthService = {
   // Registrar um novo usuário

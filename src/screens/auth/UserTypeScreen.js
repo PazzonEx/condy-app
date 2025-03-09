@@ -1,174 +1,301 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView, Image, TouchableOpacity } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+// src/screens/auth/UserTypeScreen.js
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  View, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity, 
+  Animated,
+  Dimensions
+} from 'react-native';
+import { 
+  Text, 
+  Surface, 
+  useTheme, 
+  IconButton
+} from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-// Componentes personalizados
-import Card from '../../components/Card';
-import Button from '../../components/Button';
+// Constantes
+const { width, height } = Dimensions.get('window');
 
 const UserTypeScreen = ({ navigation }) => {
   const theme = useTheme();
-
-  // Tipos de usuário disponíveis
-  const userTypes = [
-    {
-      id: 'resident',
-      title: 'Morador',
-      description: 'Solicite acesso para motoristas e entregadores no seu condomínio',
-      icon: 'home-account',
-      color: '#4CAF50', // Verde
-    },
-    {
-      id: 'driver',
-      title: 'Motorista',
-      description: 'Receba solicitações de acesso a condomínios',
-      icon: 'car',
-      color: '#2196F3', // Azul
-    },
-    {
-      id: 'condo',
-      title: 'Condomínio',
-      description: 'Gerencie o controle de acesso do seu condomínio',
-      icon: 'office-building',
-      color: '#FF9800', // Laranja
-    }
+  
+  // Estados
+  const [selectedType, setSelectedType] = useState(null);
+  
+  // Animações
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(50)).current;
+  const cardScales = [
+    useRef(new Animated.Value(1)).current,
+    useRef(new Animated.Value(1)).current,
+    useRef(new Animated.Value(1)).current
   ];
-
-  // Selecionar tipo de usuário e navegar para registro
-  const handleSelectUserType = (userType) => {
-    navigation.navigate('Register', { userType });
+  
+  // Efeito para animar entrada
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+  
+  // Selecionar tipo de usuário
+  const handleSelectType = (type) => {
+    setSelectedType(type);
+    
+    // Animar card selecionado
+    const animations = cardScales.map((scale, index) => {
+      return Animated.timing(scale, {
+        toValue: ['resident', 'driver', 'condo'].indexOf(type) === index ? 1.05 : 0.95,
+        duration: 300,
+        useNativeDriver: true,
+      });
+    });
+    
+    Animated.parallel(animations).start(() => {
+      // Navegar para tela de cadastro após a animação
+      setTimeout(() => {
+        navigation.navigate('Register', { userType: type });
+      }, 300);
+    });
   };
-
+  
+  // Voltar para tela anterior
+  const handleGoBack = () => {
+    navigation.goBack();
+  };
+  
+  // Obter estilo do card baseado no tipo selecionado
+  const getCardStyle = (type, index) => {
+    const selected = selectedType === type;
+    return [
+      styles.userTypeCard,
+      {
+        transform: [{
+          scale: cardScales[index]
+        }],
+        borderColor: selected ? getUserTypeColor(type) : 'transparent',
+        borderWidth: selected ? 2 : 0,
+      }
+    ];
+  };
+  
+  // Obter cor baseada no tipo de usuário
+  const getUserTypeColor = (type) => {
+    switch (type) {
+      case 'driver':
+        return '#FF9800';
+      case 'condo':
+        return '#4CAF50';
+      default:
+        return '#2196F3';
+    }
+  };
+  
+  // Obter gradiente de cor para background do ícone
+  const getIconBackground = (type) => {
+    const color = getUserTypeColor(type);
+    return { backgroundColor: color + '20' }; // Adiciona 20% de opacidade
+  };
+  
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
-      <View style={styles.container}>
-        {/* Cabeçalho */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Escolha seu perfil</Text>
-          <Text style={styles.subtitle}>
-            Selecione o tipo de usuário para se cadastrar
-          </Text>
-        </View>
-
-        {/* Cards de tipos de usuário */}
-        <View style={styles.cardsContainer}>
-          {userTypes.map((type) => (
-            <TouchableOpacity
-              key={type.id}
-              style={styles.cardWrapper}
-              onPress={() => handleSelectUserType(type.id)}
-            >
-              <Card style={styles.card}>
-                <View style={styles.cardContent}>
-                  <View
-                    style={[
-                      styles.iconContainer,
-                      { backgroundColor: type.color },
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name={type.icon}
-                      size={40}
-                      color="white"
-                    />
-                  </View>
-
-                  <View style={styles.cardTextContainer}>
-                    <Text style={styles.cardTitle}>{type.title}</Text>
-                    <Text style={styles.cardDescription}>
-                      {type.description}
-                    </Text>
-                  </View>
-                </View>
-              </Card>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Rodapé */}
-        <View style={styles.footer}>
-          <Text>Já tem uma conta? </Text>
-          <Button
-            mode="text"
-            onPress={() => navigation.navigate('Login')}
-            style={styles.loginButton}
-          >
-            Entrar
-          </Button>
-        </View>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={handleGoBack}
+          style={styles.backButton}
+        />
       </View>
+      
+      <Animated.View 
+        style={[
+          styles.content,
+          {
+            opacity: fadeIn,
+            transform: [{ translateY }]
+          }
+        ]}
+      >
+        <Text style={styles.title}>Quem é você?</Text>
+        <Text style={styles.subtitle}>
+          Selecione o tipo de conta que melhor se enquadra ao seu perfil.
+          Isso nos ajudará a personalizar sua experiência.
+        </Text>
+        
+        {/* Opção: Morador */}
+        <Animated.View>
+          <TouchableOpacity
+            style={getCardStyle('resident', 0)}
+            onPress={() => handleSelectType('resident')}
+            activeOpacity={0.9}
+          >
+            <Surface style={styles.userTypeCardInner}>
+              <View style={[styles.iconContainer, getIconBackground('resident')]}>
+                <MaterialCommunityIcons name="home-account" size={32} color={getUserTypeColor('resident')} />
+              </View>
+              <View style={styles.userTypeTextContainer}>
+                <Text style={styles.userTypeTitle}>Morador</Text>
+                <Text style={styles.userTypeDescription}>
+                  Você mora em um condomínio e deseja liberar acesso para motoristas
+                </Text>
+              </View>
+              <MaterialCommunityIcons 
+                name={selectedType === 'resident' ? "check-circle" : "chevron-right"} 
+                size={24} 
+                color={selectedType === 'resident' ? getUserTypeColor('resident') : '#BDBDBD'} 
+              />
+            </Surface>
+          </TouchableOpacity>
+        </Animated.View>
+        
+        {/* Opção: Motorista */}
+        <Animated.View>
+          <TouchableOpacity
+            style={getCardStyle('driver', 1)}
+            onPress={() => handleSelectType('driver')}
+            activeOpacity={0.9}
+          >
+            <Surface style={styles.userTypeCardInner}>
+              <View style={[styles.iconContainer, getIconBackground('driver')]}>
+                <MaterialCommunityIcons name="car" size={32} color={getUserTypeColor('driver')} />
+              </View>
+              <View style={styles.userTypeTextContainer}>
+                <Text style={styles.userTypeTitle}>Motorista</Text>
+                <Text style={styles.userTypeDescription}>
+                  Você é motorista de aplicativo, taxista ou entregador que acessa condomínios
+                </Text>
+              </View>
+              <MaterialCommunityIcons 
+                name={selectedType === 'driver' ? "check-circle" : "chevron-right"} 
+                size={24} 
+                color={selectedType === 'driver' ? getUserTypeColor('driver') : '#BDBDBD'} 
+              />
+            </Surface>
+          </TouchableOpacity>
+        </Animated.View>
+        
+        {/* Opção: Condomínio */}
+        <Animated.View>
+          <TouchableOpacity
+            style={getCardStyle('condo', 2)}
+            onPress={() => handleSelectType('condo')}
+            activeOpacity={0.9}
+          >
+            <Surface style={styles.userTypeCardInner}>
+              <View style={[styles.iconContainer, getIconBackground('condo')]}>
+                <MaterialCommunityIcons name="office-building" size={32} color={getUserTypeColor('condo')} />
+              </View>
+              <View style={styles.userTypeTextContainer}>
+                <Text style={styles.userTypeTitle}>Condomínio</Text>
+                <Text style={styles.userTypeDescription}>
+                  Você é um administrador ou porteiro de condomínio que gerencia acessos
+                </Text>
+              </View>
+              <MaterialCommunityIcons 
+                name={selectedType === 'condo' ? "check-circle" : "chevron-right"} 
+                size={24} 
+                color={selectedType === 'condo' ? getUserTypeColor('condo') : '#BDBDBD'} 
+              />
+            </Surface>
+          </TouchableOpacity>
+        </Animated.View>
+        
+        <Text style={styles.footnote}>
+          Você pode mudar o tipo de conta mais tarde nas configurações do aplicativo.
+        </Text>
+      </Animated.View>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-  },
   container: {
     flex: 1,
-    padding: 20,
-    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  contentContainer: {
+    flexGrow: 1,
+    paddingBottom: 24,
   },
   header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    margin: 0,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 16,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 5,
+    marginBottom: 12,
+    color: '#212121',
   },
   subtitle: {
     fontSize: 16,
-    color: '#777',
-    textAlign: 'center',
+    color: '#757575',
+    marginBottom: 32,
   },
-  cardsContainer: {
-    width: '100%',
-    maxWidth: 500,
+  userTypeCard: {
+    borderRadius: 12,
+    marginBottom: 16,
+    elevation: 0,
   },
-  cardWrapper: {
-    marginBottom: 15,
-  },
-  card: {
-    width: '100%',
-  },
-  cardContent: {
+  userTypeCardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    borderRadius: 12,
+    padding: 16,
+    elevation: 2,
   },
   iconContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: 'center',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
-    marginRight: 15,
+    alignItems: 'center',
+    marginRight: 16,
   },
-  cardTextContainer: {
+  userTypeTextContainer: {
     flex: 1,
   },
-  cardTitle: {
+  userTypeTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 5,
+    marginBottom: 4,
   },
-  cardDescription: {
+  userTypeDescription: {
     fontSize: 14,
-    color: '#666',
+    color: '#757575',
   },
-  footer: {
-    flexDirection: 'row',
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  loginButton: {
-    margin: 0,
-    padding: 0,
-  },
+  footnote: {
+    fontSize: 14,
+    color: '#9E9E9E',
+    textAlign: 'center',
+    marginTop: 32,
+  }
 });
 
 export default UserTypeScreen;

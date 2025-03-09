@@ -1,49 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Dimensions, Alert } from 'react-native';
-import { TextInput, Text, Chip, useTheme, Divider } from 'react-native-paper';
+import { View, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Text, Dimensions, Alert, Modal, Animated } from 'react-native';
+import { TextInput, Chip, useTheme, Divider, IconButton, Surface } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import Constants from 'expo-constants';
 
 // Componentes
-import Card from '../components/Card';
 import Button from '../components/Button';
 
 // Serviços
 import CondoSearchService from '../services/condo-search.service';
 import FirestoreService from '../services/firestore.service';
 import { useAuth } from '../hooks/useAuth';
-import { calculateDistance } from '../utils/location';
 
 // Constantes
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const DEBOUNCE_DELAY = 300; // ms
-const COORDINATE_PRECISION = 4; // Casas decimais para comparação de coordenadas
+const DEBOUNCE_DELAY = 300;
 
 const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) => {
   const theme = useTheme();
   const { userProfile } = useAuth();
   const inputRef = useRef(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   
   // Estados
   const [searchQuery, setSearchQuery] = useState(initialValue);
-  const [googleResults, setGoogleResults] = useState([]);
-  const [firestoreResults, setFirestoreResults] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [recentCondos, setRecentCondos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [locationPermission, setLocationPermission] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
-  const [sessionToken, setSessionToken] = useState('');
+  const [activeSearchType, setActiveSearchType] = useState('all');
+  const [showFiltersMenu, setShowFiltersMenu] = useState(false);
   
   // Timer para debounce
   const debounceTimer = useRef(null);
 
-  // Gerar token de sessão para Google Places
+  // Efeito para animação de entrada
   useEffect(() => {
-    // Token para agrupar solicitações relacionadas e reduzir custos de API
-    setSessionToken(Math.random().toString(36).substring(2, 15));
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true
+    }).start();
   }, []);
 
   // Carregar condomínios recentes e solicitar permissão de localização
@@ -58,16 +58,14 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
   // Solicitar permissão de localização
   const requestLocationPermission = async () => {
     try {
-      console.log("Solicitando permissão de localização...");
       const { status } = await Location.requestForegroundPermissionsAsync();
-      console.log("Status da permissão:", status);
       
       if (status === 'granted') {
         setLocationPermission(true);
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced
         });
-        console.log("Localização obtida:", location.coords);
+        
         setUserLocation({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude
@@ -117,156 +115,7 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
     }
   };
 
-  // Buscar todos os condomínios do sistema para comparação
-  const getAllSystemCondos = async () => {
-    try {
-      const allCondos = await FirestoreService.getCollection('condos');
-      return allCondos.filter(condo => 
-        condo.latitude && condo.longitude // Filtrar apenas condomínios com coordenadas
-      );
-    } catch (error) {
-      console.error('Erro ao buscar todos os condomínios:', error);
-      return [];
-    }
-  };
-
-  // Verificar se um condomínio está no sistema por coordenadas
-  const isCondoInSystem = (place, systemCondos) => {
-    if (!place.latitude || !place.longitude) return false;
-    
-    // Arredondar coordenadas para comparação
-    const placeLat = place.latitude.toFixed(COORDINATE_PRECISION);
-    const placeLng = place.longitude.toFixed(COORDINATE_PRECISION);
-    
-    // Verificar se existe algum condomínio com mesmas coordenadas
-    return systemCondos.some(condo => {
-      if (!condo.latitude || !condo.longitude) return false;
-      
-      const condoLat = condo.latitude.toFixed(COORDINATE_PRECISION);
-      const condoLng = condo.longitude.toFixed(COORDINATE_PRECISION);
-      
-      return placeLat === condoLat && placeLng === condoLng;
-    });
-  };
-
-  // Busca no Google Places com autocomplete
-  const searchGooglePlaces = async (query) => {
-    if (!query.trim() || query.trim().length < 2) return;
-    
-    try {
-      const googleApiKey = Constants.expoConfig?.extra?.googlePlacesApiKey;
-      
-      if (!googleApiKey) {
-        console.warn('Google Places API Key não configurada');
-        return;
-      }
-      
-      // Coordenadas para centralizar a busca (se disponível)
-      const locationParam = userLocation ? 
-        `&location=${userLocation.latitude},${userLocation.longitude}&radius=5000` : 
-        '';
-      
-      // URL da API
-      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&premise${locationParam}&key=${googleApiKey}`;
-      
-      console.log("ESSA É A URL", url);
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.status === 'OK') {
-        
-        // Obter todos os condomínios do sistema para comparação
-        const systemCondos = await getAllSystemCondos();
-        
-        // Formatar resultados e verificar se já estão no sistema
-        const formattedResults = data.results.map(place => {
-          const inSystem = isCondoInSystem(
-            {
-              latitude: place.geometry?.location?.lat,
-              longitude: place.geometry?.location?.lng
-            },
-            systemCondos
-          );
-          
-          return {
-            id: place.place_id,
-            name: place.name,
-            address: place.formatted_address,
-            latitude: place.geometry?.location?.lat,
-            longitude: place.geometry?.location?.lng,
-            fromGoogle: true,
-            inSystem: false,
-            distance: null
-          };
-        });
-        console.log("Resultados do Google Places ATUALIZADO :", formattedResults);
-
-        
-        setGoogleResults(formattedResults);
-      } else {
-        console.warn('Google Places API erro:', data.status);
-      }
-    } catch (error) {
-      console.error('Erro na busca do Google Places:', error);
-    }
-  };
-
-  // Busca no Firestore
-  const searchFirestore = async (query) => {
-    if (!query.trim() || query.trim().length < 2) return;
-    
-    try {
-      // Parâmetros de busca
-      const searchParams = {
-        query,
-        maxResults: 10,
-        onlyActive: true,
-        userLocation,
-        filterType: activeFilter
-      };
-      
-      console.log("parametros searchParams", searchParams);
-      
-      const results = await CondoSearchService.searchCondos(searchParams);
-      
-      // Adicionar distância se localização disponível
-      if (userLocation) {
-        const resultsWithDistance = results.map(condo => {
-          if (condo.latitude && condo.longitude) {
-            const distance = calculateDistance(
-              userLocation.latitude,
-              userLocation.longitude,
-              condo.latitude,
-              condo.longitude
-            );
-            return { ...condo, distance };
-          }
-          return condo;
-        });
-        
-        // Marcar como já cadastrados no sistema
-        const markedResults = resultsWithDistance.map(condo => ({
-          ...condo,
-          inSystem: true
-        }));
-        
-        setFirestoreResults(markedResults);
-      } else {
-        // Marcar como já cadastrados no sistema
-        const markedResults = results.map(condo => ({
-          ...condo,
-          inSystem: true
-        }));
-        
-        setFirestoreResults(markedResults);
-      }
-    } catch (error) {
-      console.error('Erro na busca do Firestore:', error);
-    }
-  };
-
-  // Função com debounce para busca durante digitação
+  // Busca automática ao digitar
   const handleSearchInputChange = (text) => {
     setSearchQuery(text);
     
@@ -275,105 +124,226 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
       clearTimeout(debounceTimer.current);
     }
     
-    // Configurar novo timer
+    // Configurar novo timer para busca automática
     if (text.trim().length >= 2) {
       setIsSearching(true);
       debounceTimer.current = setTimeout(() => {
-        searchGooglePlaces(text);
-        searchFirestore(text);
+        performSearch(text);
       }, DEBOUNCE_DELAY);
     } else {
-      setGoogleResults([]);
-      setFirestoreResults([]);
+      setSearchResults([]);
       setIsSearching(false);
     }
   };
 
-  // Busca completa (ao pressionar o botão de busca)
-  const handleSearch = () => {
-    if (searchQuery.trim().length < 2) return;
+  // Busca completa de condomínios
+  const performSearch = async (query) => {
+    if (!query || query.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
     
-    setLoading(true);
-    setIsSearching(true);
-    
-    // Executar ambas as buscas
-    Promise.all([
-      searchGooglePlaces(searchQuery),
-      searchFirestore(searchQuery)
-    ]).finally(() => {
+    try {
+      setLoading(true);
+      
+      // Parâmetros de busca avançada
+      const searchParams = {
+        query: query.trim(),
+        maxResults: 20,
+        onlyActive: true,
+        userLocation,
+        filterType: activeFilter,
+        searchType: activeSearchType
+      };
+      
+      // Usar serviço para busca
+      const results = await CondoSearchService.searchCondos(searchParams);
+      
+      // Armazenar resultados
+      setSearchResults(results);
+      setIsSearching(true);
+    } catch (error) {
+      console.error('Erro na busca:', error);
+      Alert.alert('Erro', 'Não foi possível realizar a busca. Tente novamente.');
+    } finally {
       setLoading(false);
-    });
+    }
   };
 
   // Limpar busca
   const clearSearch = () => {
     setSearchQuery('');
-    setGoogleResults([]);
-    setFirestoreResults([]);
+    setSearchResults([]);
     setIsSearching(false);
     inputRef.current?.focus();
   };
 
-  // Selecionar um condomínio
-  const handleSelectCondoItem = async (condo) => {
-    // Verificar se o condomínio vem do Google Places e não está no sistema
-    const isExternalCondo = condo.fromGoogle && !condo.inSystem;
-    
-    if (isExternalCondo) {
-      // Mostrar alerta informando que o condomínio não está no sistema e bloquear o prosseguimento
+  // Função para selecionar um condomínio
+  const handleSelectCondoItem = (condo) => {
+    // Verificar disponibilidade
+    if (condo.fromGoogle && !condo.inSystem) {
       Alert.alert(
         'Condomínio não cadastrado',
         'Este condomínio ainda não está cadastrado no nosso aplicativo. No momento só atendemos condomínios já cadastrados.',
         [{ text: 'Entendi' }]
       );
-      // Não limpa a interface e não chama o callback onSelectCondo
       return;
-    } else {
-      // Condomínio já cadastrado no sistema - pode prosseguir normalmente
-      setSearchQuery('');
-      setGoogleResults([]);
-      setFirestoreResults([]);
-      setIsSearching(false);
-      onSelectCondo(condo);
+    }
+    
+    // Condomínio válido
+    onSelectCondo(condo);
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+  };
+
+  // Toggle menu de filtros
+  const toggleFiltersMenu = () => {
+    setShowFiltersMenu(!showFiltersMenu);
+  };
+
+  // Aplicar filtro
+  const applyFilter = (filterType, searchType) => {
+    if (filterType) setActiveFilter(filterType);
+    if (searchType) setActiveSearchType(searchType);
+    setShowFiltersMenu(false);
+    
+    // Reexecutar busca com novos filtros
+    if (searchQuery.trim().length >= 2) {
+      performSearch(searchQuery);
     }
   };
 
-  // Renderizar chips de filtro
-  const renderFilterChips = () => (
-    <View style={styles.filterContainer}>
-      <Chip
-        selected={activeFilter === 'all'}
-        onPress={() => setActiveFilter('all')}
-        style={styles.filterChip}
+  // Menu de filtros
+  const FiltersMenu = () => (
+    <Modal
+      visible={showFiltersMenu}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowFiltersMenu(false)}
+    >
+      <TouchableOpacity 
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setShowFiltersMenu(false)}
       >
-        Todos
-      </Chip>
-      
-      <Chip
-        selected={activeFilter === 'nearby'}
-        onPress={() => {
-          if (!locationPermission) {
-            requestLocationPermission();
-            return;
-          }
-          setActiveFilter('nearby');
-        }}
-        style={styles.filterChip}
-      >
-        Próximos
-      </Chip>
-      
-      <Chip
-        selected={activeFilter === 'recent'}
-        onPress={() => setActiveFilter('recent')}
-        style={styles.filterChip}
-      >
-        Recentes
-      </Chip>
-    </View>
+        <Surface style={styles.filtersMenu}>
+          <Text style={styles.filtersTitle}>Opções de Busca</Text>
+          
+          <View style={styles.filtersSection}>
+            <Text style={styles.filtersSectionTitle}>Buscar por:</Text>
+            
+            <TouchableOpacity 
+              style={[styles.filterOption, activeSearchType === 'all' && styles.filterOptionActive]}
+              onPress={() => applyFilter(null, 'all')}
+            >
+              <MaterialCommunityIcons 
+                name="text-search" 
+                size={20} 
+                color={activeSearchType === 'all' ? theme.colors.primary : '#757575'} 
+              />
+              <Text style={[styles.filterOptionText, activeSearchType === 'all' && styles.filterOptionTextActive]}>
+                Todos os campos
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.filterOption, activeSearchType === 'name' && styles.filterOptionActive]}
+              onPress={() => applyFilter(null, 'name')}
+            >
+              <MaterialCommunityIcons 
+                name="office-building" 
+                size={20} 
+                color={activeSearchType === 'name' ? theme.colors.primary : '#757575'} 
+              />
+              <Text style={[styles.filterOptionText, activeSearchType === 'name' && styles.filterOptionTextActive]}>
+                Nome do condomínio
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.filterOption, activeSearchType === 'address' && styles.filterOptionActive]}
+              onPress={() => applyFilter(null, 'address')}
+            >
+              <MaterialCommunityIcons 
+                name="map-marker" 
+                size={20} 
+                color={activeSearchType === 'address' ? theme.colors.primary : '#757575'} 
+              />
+              <Text style={[styles.filterOptionText, activeSearchType === 'address' && styles.filterOptionTextActive]}>
+                Endereço
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <Divider style={styles.filtersDivider} />
+          
+          <View style={styles.filtersSection}>
+            <Text style={styles.filtersSectionTitle}>Exibir:</Text>
+            
+            <TouchableOpacity 
+              style={[styles.filterOption, activeFilter === 'all' && styles.filterOptionActive]}
+              onPress={() => applyFilter('all', null)}
+            >
+              <MaterialCommunityIcons 
+                name="view-grid" 
+                size={20} 
+                color={activeFilter === 'all' ? theme.colors.primary : '#757575'} 
+              />
+              <Text style={[styles.filterOptionText, activeFilter === 'all' && styles.filterOptionTextActive]}>
+                Todos os condomínios
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.filterOption, activeFilter === 'nearby' && styles.filterOptionActive]}
+              onPress={() => {
+                if (!locationPermission) {
+                  requestLocationPermission();
+                  setShowFiltersMenu(false);
+                  return;
+                }
+                applyFilter('nearby', null);
+              }}
+            >
+              <MaterialCommunityIcons 
+                name="map-marker-radius" 
+                size={20} 
+                color={activeFilter === 'nearby' ? theme.colors.primary : '#757575'} 
+              />
+              <Text style={[styles.filterOptionText, activeFilter === 'nearby' && styles.filterOptionTextActive]}>
+                Condomínios próximos
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.filterOption, activeFilter === 'recent' && styles.filterOptionActive]}
+              onPress={() => applyFilter('recent', null)}
+            >
+              <MaterialCommunityIcons 
+                name="history" 
+                size={20} 
+                color={activeFilter === 'recent' ? theme.colors.primary : '#757575'} 
+              />
+              <Text style={[styles.filterOptionText, activeFilter === 'recent' && styles.filterOptionTextActive]}>
+                Condomínios recentes
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <Button 
+            mode="contained" 
+            onPress={() => setShowFiltersMenu(false)}
+            style={styles.closeFiltersButton}
+          >
+            Aplicar Filtros
+          </Button>
+        </Surface>
+      </TouchableOpacity>
+    </Modal>
   );
 
-  // Renderizar item de condomínio na lista
+  // Renderizar item de condomínio
   const renderCondoItem = ({ item }) => (
     <TouchableOpacity
       style={[
@@ -395,9 +365,10 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
           color="#fff" 
         />
       </View>
+      
       <View style={styles.condoDetails}>
         <View style={styles.condoNameContainer}>
-          <Text style={styles.condoName}>{item.name}</Text>
+          <Text style={styles.condoName} numberOfLines={1}>{item.name}</Text>
           {item.verified && (
             <MaterialCommunityIcons 
               name="check-circle" 
@@ -407,30 +378,41 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
             />
           )}
         </View>
+        
         <Text style={styles.condoAddress} numberOfLines={2}>
           {item.address}
         </Text>
+        
         <View style={styles.condoBadgeContainer}>
-          {item.distance && (
+          {item.distance !== null && (
             <View style={styles.distanceBadge}>
               <MaterialCommunityIcons name="map-marker-distance" size={12} color="#1E88E5" />
               <Text style={styles.distanceText}>
-                {item.distance.toFixed(1)} km
+                {typeof item.distance === 'number' ? `${item.distance.toFixed(1)} km` : 'Distância desconhecida'}
               </Text>
             </View>
           )}
+          
           {item.inSystem && (
             <View style={styles.inSystemBadge}>
               <Text style={styles.inSystemBadgeText}>Disponível</Text>
             </View>
           )}
+          
           {item.fromGoogle && !item.inSystem && (
             <View style={styles.notAvailableBadge}>
               <Text style={styles.notAvailableBadgeText}>Não disponível</Text>
             </View>
           )}
+          
+          {item.isRecent && (
+            <View style={styles.recentBadge}>
+              <Text style={styles.recentBadgeText}>Recente</Text>
+            </View>
+          )}
         </View>
       </View>
+      
       <MaterialCommunityIcons 
         name={item.fromGoogle && !item.inSystem ? "close-circle" : "chevron-right"} 
         size={24} 
@@ -439,26 +421,20 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
     </TouchableOpacity>
   );
 
-  // Renderizar resultados combinados (Google + Firestore)
-  const renderCombinedResults = () => {
-    // Combinando resultados sem duplicatas (prioridade para Firestore)
-    const firestorePlaceIds = firestoreResults.map(item => item.id);
-    const filteredGoogleResults = googleResults.filter(
-      item => !firestorePlaceIds.includes(item.id)
-    );
+  // Renderizar resultados
+  const renderResults = () => {
+    // Determinar quais resultados mostrar
+    let displayResults = [];
     
-    // Ordenar por distância se filtro for "nearby"
-    let combinedResults = [...firestoreResults, ...filteredGoogleResults];
-    if (activeFilter === 'nearby' && userLocation) {
-      combinedResults.sort((a, b) => {
-        // Prioridade para itens com distância
-        const distA = a.distance !== undefined && a.distance !== null ? a.distance : Infinity;
-        const distB = b.distance !== undefined && b.distance !== null ? b.distance : Infinity;
-        return distA - distB;
-      });
+    if (isSearching) {
+      // Mostrar resultados da busca
+      displayResults = searchResults;
+    } else if (activeFilter === 'recent') {
+      // Mostrar condomínios recentes
+      displayResults = recentCondos;
     }
     
-    if (loading && combinedResults.length === 0) {
+    if (loading && displayResults.length === 0) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -467,7 +443,7 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
       );
     }
     
-    if (isSearching && combinedResults.length === 0) {
+    if (isSearching && displayResults.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <MaterialCommunityIcons name="magnify-close" size={40} color="#BDBDBD" />
@@ -477,30 +453,7 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
       );
     }
     
-    return (
-      <FlatList
-        data={combinedResults}
-        renderItem={renderCondoItem}
-        keyExtractor={item => item.id}
-        ItemSeparatorComponent={() => <Divider />}
-        contentContainerStyle={styles.resultsList}
-        keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
-          isSearching ? (
-            <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="magnify-close" size={40} color="#BDBDBD" />
-              <Text style={styles.emptyText}>Nenhum condomínio encontrado</Text>
-              <Text style={styles.emptySubtext}>Tente buscar por nome ou endereço</Text>
-            </View>
-          ) : null
-        }
-      />
-    );
-  };
-
-  // Renderizar condomínios recentes
-  const renderRecentCondos = () => {
-    if (recentCondos.length === 0) {
+    if (activeFilter === 'recent' && recentCondos.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <MaterialCommunityIcons name="history" size={40} color="#BDBDBD" />
@@ -514,52 +467,113 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
     
     return (
       <FlatList
-        data={recentCondos}
+        data={displayResults}
         renderItem={renderCondoItem}
         keyExtractor={item => item.id}
         ItemSeparatorComponent={() => <Divider />}
         contentContainerStyle={styles.resultsList}
+        keyboardShouldPersistTaps="handled"
       />
     );
   };
 
+  // Renderização principal com design modernizado
   return (
-    <View style={[styles.container, style]}>
-      <View style={styles.searchContainer}>
-        <TextInput
-          ref={inputRef}
-          mode="outlined"
-          value={searchQuery}
-          onChangeText={handleSearchInputChange}
-          placeholder="Buscar condomínio por nome ou endereço"
-          onSubmitEditing={handleSearch}
-          style={styles.searchInput}
-          left={<TextInput.Icon icon="magnify" />}
-          right={
-            searchQuery ? (
-              <TextInput.Icon icon="close" onPress={clearSearch} />
-            ) : null
-          }
+    <Animated.View 
+      style={[
+        styles.container, 
+        style,
+        { opacity: fadeAnim }
+      ]}
+    >
+      {/* Cabeçalho de Busca */}
+      <View style={styles.searchHeader}>
+        <Text style={styles.searchTitle}>Encontre seu condomínio</Text>
+        <Text style={styles.searchSubtitle}>
+          {userLocation ? 'Usando sua localização atual' : 'Busque por nome ou endereço'}
+        </Text>
+      </View>
+      
+      {/* Barra de busca moderna */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchBar}>
+          <MaterialCommunityIcons name="magnify" size={24} color={theme.colors.primary} style={styles.searchIcon} />
+          <TextInput
+            ref={inputRef}
+            value={searchQuery}
+            onChangeText={handleSearchInputChange}
+            placeholder="Nome ou endereço do condomínio"
+            style={styles.searchInput}
+            mode="flat"
+            underlineColor="transparent"
+            theme={{ colors: { primary: 'transparent', underlineColor: 'transparent' } }}
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+              <MaterialCommunityIcons name="close-circle" size={20} color="#757575" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        
+        <IconButton
+          icon="tune"
+          color={theme.colors.primary}
+          size={24}
+          style={styles.filterButton}
+          onPress={toggleFiltersMenu}
         />
-        <Button 
-          mode="contained" 
-          onPress={handleSearch}
-          style={styles.searchButton}
-          loading={loading}
-          disabled={loading || searchQuery.trim().length < 2}
-        >
-          Buscar
-        </Button>
+      </View>
+
+      {/* Indicador de filtros ativos */}
+      <View style={styles.activeFiltersContainer}>
+        {activeFilter !== 'all' && (
+          <Chip 
+            mode="outlined" 
+            style={styles.activeFilterChip}
+            onClose={() => applyFilter('all', null)}
+          >
+            {activeFilter === 'nearby' ? 'Próximos' : 'Recentes'}
+          </Chip>
+        )}
+        
+        {activeSearchType !== 'all' && (
+          <Chip 
+            mode="outlined" 
+            style={styles.activeFilterChip}
+            onClose={() => applyFilter(null, 'all')}
+          >
+            {activeSearchType === 'name' ? 'Por nome' : 'Por endereço'}
+          </Chip>
+        )}
       </View>
       
-      {renderFilterChips()}
+      {/* Modal de Filtros */}
+      <FiltersMenu />
       
+      {/* Resultados da Busca */}
       <View style={styles.resultsContainer}>
-        {(activeFilter === 'recent' && !isSearching) 
-          ? renderRecentCondos() 
-          : renderCombinedResults()}
+        {renderResults()}
       </View>
-    </View>
+      
+      {/* Dicas de busca - mostradas apenas quando não há resultados ou busca */}
+      {!isSearching && searchResults.length === 0 && recentCondos.length === 0 && (
+        <View style={styles.tipsContainer}>
+          <Text style={styles.tipsTitle}>Dicas de Busca:</Text>
+          <View style={styles.tipItem}>
+            <MaterialCommunityIcons name="office-building" size={18} color={theme.colors.primary} />
+            <Text style={styles.tipText}>Nome exato do condomínio</Text>
+          </View>
+          <View style={styles.tipItem}>
+            <MaterialCommunityIcons name="map-marker" size={18} color={theme.colors.primary} />
+            <Text style={styles.tipText}>Endereço ou CEP</Text>
+          </View>
+          <View style={styles.tipItem}>
+            <MaterialCommunityIcons name="map-marker-radius" size={18} color={theme.colors.primary} />
+            <Text style={styles.tipText}>Use o filtro "Próximos" para encontrar condomínios pela sua localização</Text>
+          </View>
+        </View>
+      )}
+    </Animated.View>
   );
 };
 
@@ -567,29 +581,119 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-  searchContainer: {
+  searchHeader: {
+    marginBottom: 16,
+  },
+  searchTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#212121',
+  },
+  searchSubtitle: {
+    fontSize: 14,
+    color: '#757575',
+    marginTop: 4,
+  },
+  searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    elevation: 3,
+    marginRight: 8,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    marginRight: 8,
+    backgroundColor: 'transparent',
+    fontSize: 16,
+    paddingVertical: 8,
+    height: 40,
   },
-  searchButton: {
-    marginVertical: 0,
+  clearButton: {
+    padding: 4,
   },
-  filterContainer: {
+  filterButton: {
+    backgroundColor: '#F5F5F5',
+    margin: 0,
+  },
+  activeFiltersContainer: {
     flexDirection: 'row',
-    marginBottom: 16,
     flexWrap: 'wrap',
+    marginBottom: 12,
   },
-  filterChip: {
+  activeFilterChip: {
     marginRight: 8,
     marginBottom: 8,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filtersMenu: {
+    width: '85%',
+    padding: 20,
+    borderRadius: 12,
+    elevation: 4,
+    backgroundColor: '#FFFFFF',
+  },
+  filtersTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  filtersSection: {
+    marginBottom: 16,
+  },
+  filtersSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#424242',
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+  },
+  filterOptionActive: {
+    backgroundColor: '#E3F2FD',
+  },
+  filterOptionText: {
+    marginLeft: 12,
+    fontSize: 15,
+    color: '#424242',
+  },
+  filterOptionTextActive: {
+    color: '#1976D2',
+    fontWeight: '500',
+  },
+  filtersDivider: {
+    marginVertical: 12,
+  },
+  closeFiltersButton: {
+    marginTop: 8,
+  },
   resultsContainer: {
-    maxHeight: SCREEN_WIDTH * 1.2, // Altura proporcional à largura da tela
+    maxHeight: SCREEN_WIDTH * 1.2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    elevation: 1,
   },
   resultsList: {
     paddingBottom: 8,
@@ -694,6 +798,18 @@ const styles = StyleSheet.create({
     color: '#D32F2F',
     fontWeight: 'bold',
   },
+  recentBadge: {
+    backgroundColor: '#F3E5F5',
+    borderRadius: 12,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    marginRight: 6,
+    marginBottom: 2,
+  },
+  recentBadgeText: {
+    fontSize: 12,
+    color: '#9C27B0',
+  },
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: 24,
@@ -717,6 +833,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 16,
   },
+  tipsContainer: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    elevation: 1,
+  },
+  tipsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  tipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  tipText: {
+    marginLeft: 10,
+    fontSize: 14,
+    flex: 1,
+  }
 });
 
 export default GooglePlacesCondoSearch;

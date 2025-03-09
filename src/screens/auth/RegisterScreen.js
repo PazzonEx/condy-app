@@ -1,1343 +1,713 @@
-import React, { useState, useEffect } from 'react';
+// src/screens/auth/RegisterScreen.js
+import React, { useState, useRef, useEffect } from 'react';
 import { 
-  StyleSheet, 
   View, 
+  StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  KeyboardAvoidingView, 
+  KeyboardAvoidingView,
   Platform,
-  Alert,
-  Image
+  Keyboard,
+  Animated,
+  Dimensions
 } from 'react-native';
-import { Text, useTheme, ProgressBar, Divider } from 'react-native-paper';
-import * as ImagePicker from 'expo-image-picker';
+import { 
+  Text, 
+  TextInput, 
+  Button, 
+  Surface, 
+  useTheme, 
+
+  Snackbar,
+  IconButton
+} from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ProgressBar } from 'react-native-paper';
+// Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
 
-// Componentes personalizados
-import Input from '../../components/Input';
-import Button from '../../components/Button';
-import Card from '../../components/Card';
+// Utilidades
+import { isValidEmail, validatePassword } from '../../utils/validation';
 
-// Serviços
-import StorageService from '../../services/storage.service';
-import FirestoreService from '../../services/firestore.service';
-
-// Utilitários
-import { 
-  isValidEmail, 
-  validatePassword, 
-  isValidPhone, 
-  isValidCPF, 
-  isValidCNPJ,
-  isValidVehiclePlate
-} from '../../utils/validation';
+// Constantes
+const { width, height } = Dimensions.get('window');
 
 const RegisterScreen = ({ navigation, route }) => {
   const theme = useTheme();
-  const { register, error } = useAuth();
+  const { register } = useAuth();
   
-  // Pegar tipo de usuário da rota
-  const { userType = 'resident' } = route.params || {};
+  // Obter o tipo de usuário da navegação
+  const userType = route.params.userType ;
   
-  // Estados para controle de etapas
-  const [currentStep, setCurrentStep] = useState(1);
-  const [totalSteps, setTotalSteps] = useState(1);
-  
-  // Estados para formulário de registro básico (Etapa 1)
-  const [basicInfo, setBasicInfo] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: ''
-  });
-  
-  // Estados para informações específicas de moradores (Etapa 2 para moradores)
-  const [residentInfo, setResidentInfo] = useState({
-    cpf: '',
-    condoName: '',
-    condoId: '',
-    unit: '',
-    block: '',
-    availableCondos: []
-  });
-  
-  // Estados para informações específicas de motoristas (Etapas 2-3 para motoristas)
-  const [driverInfo, setDriverInfo] = useState({
-    cpf: '',
-    vehiclePlate: '',
-    vehicleModel: '',
-    vehicleYear: '',
-    vehicleColor: '',
-    serviceType: 'app', // 'app', 'taxi', 'delivery' or 'private'
-    licenseNumber: ''
-  });
-  
-  // Estados para informações específicas de condomínios (Etapa 2 para condomínios)
-  const [condoInfo, setCondoInfo] = useState({
-    cnpj: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    units: '',
-    blocks: '',
-    managerName: '',
-    managerPhone: ''
-  });
-  
-  // Estados para imagens/documentos (Etapa 3 ou 4 dependendo do tipo)
-  const [documents, setDocuments] = useState({
-    profilePhoto: null,
-    driverLicense: null,  // Apenas para motoristas
-    vehiclePhoto: null,   // Apenas para motoristas
-    condoPhoto: null      // Apenas para condomínios
-  });
-  
+  // Estados
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formErrors, setFormErrors] = useState({});
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showError, setShowError] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
+  const [step, setStep] = useState(1);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   
-  // Configurar o número total de etapas com base no tipo de usuário
+  // Refs para navegação entre inputs
+  const emailInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
+  const confirmPasswordInputRef = useRef(null);
+  
+  // Animações
+  const progressValue = useRef(new Animated.Value(1)).current;
+  const formOpacity = useRef(new Animated.Value(0)).current;
+  const formTranslateY = useRef(new Animated.Value(50)).current;
+  
+  // Efeito para monitorar teclado
   useEffect(() => {
-    switch(userType) {
-      case 'resident':
-        setTotalSteps(2);
-        break;
-      case 'driver':
-        setTotalSteps(3);
-        break;
-      case 'condo':
-        setTotalSteps(3);
-        break;
-      default:
-        setTotalSteps(1);
-    }
-  }, [userType]);
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      }
+    );
+    
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+    
+    // Animar entrada do formulário
+    Animated.parallel([
+      Animated.timing(formOpacity, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(formTranslateY, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
   
-  // Carregar condomínios disponíveis para moradores
+  // Efeito para verificar a força da senha
   useEffect(() => {
-    if (userType === 'resident' && currentStep === 2) {
-      const loadCondos = async () => {
-        try {
-          const condos = await FirestoreService.getCollection('condos');
-          setResidentInfo(prev => ({
-            ...prev,
-            availableCondos: condos
-          }));
-        } catch (error) {
-          console.error('Erro ao carregar condomínios:', error);
-        }
-      };
-      
-      loadCondos();
+    if (!password) {
+      setPasswordStrength(0);
+      return;
     }
-  }, [userType, currentStep]);
+    
+    let strength = 0;
+    
+    // Verificar tamanho
+    if (password.length >= 8) strength += 0.25;
+    
+    // Verificar presença de números
+    if (/\d/.test(password)) strength += 0.25;
+    
+    // Verificar presença de caracteres especiais
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength += 0.25;
+    
+    // Verificar presença de letras maiúsculas e minúsculas
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 0.25;
+    
+    setPasswordStrength(strength);
+  }, [password]);
+  
+  // Efeito para animar o progresso do cadastro
+  const [progress, setProgress] = useState(0.33);
 
-  // Texto do cabeçalho com base no tipo de usuário
-  const getUserTypeTitle = () => {
-    switch (userType) {
-      case 'resident':
-        return 'Cadastro de Morador';
-      case 'driver':
-        return 'Cadastro de Motorista';
-      case 'condo':
-        return 'Cadastro de Condomínio';
-      default:
-        return 'Cadastro';
+// No useEffect para atualizar o progresso
+useEffect(() => {
+  const progressPercentage = step === 1 ? 0.33 : step === 2 ? 0.66 : 1;
+  setProgress(progressPercentage);
+  
+  // Animar apenas para visual
+  Animated.timing(progressValue, {
+    toValue: progressPercentage,
+    duration: 300,
+    useNativeDriver: false,
+  }).start();
+}, [step]);
+
+  
+  // Obter a cor da barra de progresso de senha
+  const getPasswordStrengthColor = () => {
+    if (passwordStrength < 0.3) return '#F44336'; // Fraca
+    if (passwordStrength < 0.6) return '#FFC107'; // Média
+    return '#4CAF50'; // Forte
+  };
+  
+  // Validar nome
+  const validateName = () => {
+    if (!name.trim()) {
+      setErrorMessage('Informe seu nome completo');
+      setShowError(true);
+      return false;
+    }
+    
+    if (name.trim().length < 3) {
+      setErrorMessage('Nome muito curto');
+      setShowError(true);
+      return false;
+    }
+    
+    return true;
+  };
+  
+  // Validar email
+  const validateEmail = () => {
+    if (!email.trim()) {
+      setErrorMessage('Informe seu email');
+      setShowError(true);
+      return false;
+    }
+    
+    if (!isValidEmail(email)) {
+      setErrorMessage('Email inválido');
+      setShowError(true);
+      return false;
+    }
+    
+    return true;
+  };
+  
+  // Validar senha
+  const validateUserPassword = () => {
+    if (!password) {
+      setErrorMessage('Informe uma senha');
+      setShowError(true);
+      return false;
+    }
+    
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      setErrorMessage(passwordValidation.errors[0]);
+      setShowError(true);
+      return false;
+    }
+    
+    if (password !== confirmPassword) {
+      setErrorMessage('As senhas não coincidem');
+      setShowError(true);
+      return false;
+    }
+    
+    return true;
+  };
+  
+  // Avançar para o próximo passo
+  const nextStep = () => {
+    if (step === 1) {
+      if (validateName() && validateEmail()) {
+        setStep(2);
+        setTimeout(() => passwordInputRef.current?.focus(), 100);
+      }
+    } else {
+      handleRegister();
     }
   };
   
-  // Descrição da etapa atual
-  const getStepDescription = () => {
-    if (userType === 'resident') {
-      return currentStep === 1 
-        ? 'Informações básicas'
-        : 'Informações do condomínio';
-    } else if (userType === 'driver') {
-      if (currentStep === 1) return 'Informações básicas';
-      if (currentStep === 2) return 'Dados do veículo';
-      return 'Documentos';
-    } else if (userType === 'condo') {
-      if (currentStep === 1) return 'Informações básicas';
-      if (currentStep === 2) return 'Dados do condomínio';
-      return 'Informações adicionais';
-    }
-    
-    return 'Informações básicas';
-  };
-
-  // Validar a etapa atual do formulário
-  const validateCurrentStep = () => {
-    const errors = {};
-    
-    // Validação da Etapa 1 (comum para todos os tipos)
-    if (currentStep === 1) {
-      // Nome
-      if (!basicInfo.name.trim()) {
-        errors.name = 'Nome é obrigatório';
-      } else if (basicInfo.name.trim().length < 3) {
-        errors.name = 'Nome deve ter pelo menos 3 caracteres';
-      }
-      
-      // Email
-      if (!basicInfo.email.trim()) {
-        errors.email = 'Email é obrigatório';
-      } else if (!isValidEmail(basicInfo.email)) {
-        errors.email = 'Email inválido';
-      }
-      
-      // Telefone
-      if (!basicInfo.phone.trim()) {
-        errors.phone = 'Telefone é obrigatório';
-      } else if (!isValidPhone(basicInfo.phone)) {
-        errors.phone = 'Telefone inválido';
-      }
-      
-      // Senha
-      if (!basicInfo.password) {
-        errors.password = 'Senha é obrigatória';
-      } else if (basicInfo.password.length < 6) {
-        errors.password = 'Senha deve ter pelo menos 6 caracteres';
-      }
-      
-      // Confirmação de senha
-      if (basicInfo.password !== basicInfo.confirmPassword) {
-        errors.confirmPassword = 'As senhas não coincidem';
-      }
-    }
-    
-    // Validação da Etapa 2 para moradores
-    else if (currentStep === 2 && userType === 'resident') {
-      // CPF
-      if (!residentInfo.cpf.trim()) {
-        errors.cpf = 'CPF é obrigatório';
-      } else if (!isValidCPF(residentInfo.cpf)) {
-        errors.cpf = 'CPF inválido';
-      }
-      
-      // Unidade
-      if (!residentInfo.unit.trim()) {
-        errors.unit = 'Número da unidade é obrigatório';
-      }
-      
-      // Condomínio
-      if (!residentInfo.condoId) {
-        errors.condoId = 'Selecione um condomínio';
-      }
-    }
-    
-    // Validação da Etapa 2 para motoristas
-    else if (currentStep === 2 && userType === 'driver') {
-      // CPF
-      if (!driverInfo.cpf.trim()) {
-        errors.cpf = 'CPF é obrigatório';
-      } else if (!isValidCPF(driverInfo.cpf)) {
-        errors.cpf = 'CPF inválido';
-      }
-      
-      // Placa do veículo
-      if (!driverInfo.vehiclePlate.trim()) {
-        errors.vehiclePlate = 'Placa do veículo é obrigatória';
-      } else if (!isValidVehiclePlate(driverInfo.vehiclePlate)) {
-        errors.vehiclePlate = 'Placa do veículo inválida';
-      }
-      
-      // Modelo do veículo
-      if (!driverInfo.vehicleModel.trim()) {
-        errors.vehicleModel = 'Modelo do veículo é obrigatório';
-      }
-      
-      // Número da CNH
-      if (!driverInfo.licenseNumber.trim()) {
-        errors.licenseNumber = 'Número da CNH é obrigatório';
-      }
-    }
-    
-    // Validação da Etapa 3 para motoristas
-    else if (currentStep === 3 && userType === 'driver') {
-      // Foto do perfil
-      if (!documents.profilePhoto) {
-        errors.profilePhoto = 'Foto de perfil é obrigatória';
-      }
-      
-      // Foto da CNH
-      if (!documents.driverLicense) {
-        errors.driverLicense = 'Foto da CNH é obrigatória';
-      }
-      
-      // Foto do veículo
-      if (!documents.vehiclePhoto) {
-        errors.vehiclePhoto = 'Foto do veículo é obrigatória';
-      }
-    }
-    
-    // Validação da Etapa 2 para condomínios
-    else if (currentStep === 2 && userType === 'condo') {
-      // CNPJ
-      if (!condoInfo.cnpj.trim()) {
-        errors.cnpj = 'CNPJ é obrigatório';
-      } else if (!isValidCNPJ(condoInfo.cnpj)) {
-        errors.cnpj = 'CNPJ inválido';
-      }
-      
-      // Endereço
-      if (!condoInfo.address.trim()) {
-        errors.address = 'Endereço é obrigatório';
-      }
-      
-      // Cidade
-      if (!condoInfo.city.trim()) {
-        errors.city = 'Cidade é obrigatória';
-      }
-      
-      // Estado
-      if (!condoInfo.state.trim()) {
-        errors.state = 'Estado é obrigatório';
-      }
-      
-      // CEP
-      if (!condoInfo.zipCode.trim()) {
-        errors.zipCode = 'CEP é obrigatório';
-      }
-      
-      // Número de unidades
-      if (!condoInfo.units.trim()) {
-        errors.units = 'Número de unidades é obrigatório';
-      }
-    }
-    
-    // Validação da Etapa 3 para condomínios
-    else if (currentStep === 3 && userType === 'condo') {
-      // Nome do responsável/síndico
-      if (!condoInfo.managerName.trim()) {
-        errors.managerName = 'Nome do responsável é obrigatório';
-      }
-      
-      // Telefone do responsável/síndico
-      if (!condoInfo.managerPhone.trim()) {
-        errors.managerPhone = 'Telefone do responsável é obrigatório';
-      } else if (!isValidPhone(condoInfo.managerPhone)) {
-        errors.managerPhone = 'Telefone do responsável inválido';
-      }
-      
-      // Foto do condomínio
-      if (!documents.condoPhoto) {
-        errors.condoPhoto = 'Foto do condomínio é obrigatória';
-      }
-    }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  // Avançar para a próxima etapa
-  const handleNextStep = () => {
-    if (validateCurrentStep()) {
-      if (currentStep < totalSteps) {
-        setCurrentStep(currentStep + 1);
-      } else {
-        handleRegister();
-      }
-    }
-  };
-
-  // Voltar para a etapa anterior
-  const handlePreviousStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+  // Voltar para o passo anterior
+  const prevStep = () => {
+    if (step === 2) {
+      setStep(1);
     } else {
       navigation.goBack();
     }
   };
   
-  // Escolher foto/documento
-  const handleChooseImage = async (type) => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'É necessário conceder permissão para acessar a galeria.');
-        return;
-      }
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const selectedAsset = result.assets[0];
-        
-        setDocuments(prev => ({
-          ...prev,
-          [type]: selectedAsset.uri
-        }));
-        
-        // Limpar erro
-        if (formErrors[type]) {
-          setFormErrors(prev => ({
-            ...prev,
-            [type]: null
-          }));
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao escolher imagem:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar a imagem. Tente novamente.');
-    }
-  };
-  
-  // Formatar CPF durante digitação
-  const handleCPFChange = (text) => {
-    // Remove caracteres não numéricos
-    const cleaned = text.replace(/\D/g, '');
-    
-    // Formata o CPF (XXX.XXX.XXX-XX)
-    let formatted = '';
-    if (cleaned.length <= 3) {
-      formatted = cleaned;
-    } else if (cleaned.length <= 6) {
-      formatted = `${cleaned.slice(0, 3)}.${cleaned.slice(3)}`;
-    } else if (cleaned.length <= 9) {
-      formatted = `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6)}`;
-    } else {
-      formatted = `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9, 11)}`;
-    }
-    
-    if (userType === 'resident') {
-      setResidentInfo(prev => ({ ...prev, cpf: formatted }));
-    } else if (userType === 'driver') {
-      setDriverInfo(prev => ({ ...prev, cpf: formatted }));
-    }
-  };
-  
-  // Formatar CNPJ durante digitação
-  const handleCNPJChange = (text) => {
-    // Remove caracteres não numéricos
-    const cleaned = text.replace(/\D/g, '');
-    
-    // Formata o CNPJ (XX.XXX.XXX/XXXX-XX)
-    let formatted = '';
-    if (cleaned.length <= 2) {
-      formatted = cleaned;
-    } else if (cleaned.length <= 5) {
-      formatted = `${cleaned.slice(0, 2)}.${cleaned.slice(2)}`;
-    } else if (cleaned.length <= 8) {
-      formatted = `${cleaned.slice(0, 2)}.${cleaned.slice(2, 5)}.${cleaned.slice(5)}`;
-    } else if (cleaned.length <= 12) {
-      formatted = `${cleaned.slice(0, 2)}.${cleaned.slice(2, 5)}.${cleaned.slice(5, 8)}/${cleaned.slice(8)}`;
-    } else {
-      formatted = `${cleaned.slice(0, 2)}.${cleaned.slice(2, 5)}.${cleaned.slice(5, 8)}/${cleaned.slice(8, 12)}-${cleaned.slice(12, 14)}`;
-    }
-    
-    setCondoInfo(prev => ({ ...prev, cnpj: formatted }));
-  };
-  
-  // Formatar telefone durante digitação
-  const handlePhoneChange = (text) => {
-    // Remove caracteres não numéricos
-    const cleaned = text.replace(/\D/g, '');
-    
-    // Formata o telefone ((XX) XXXXX-XXXX ou (XX) XXXX-XXXX)
-    let formatted = '';
-    if (cleaned.length <= 2) {
-      formatted = cleaned.length ? `(${cleaned}` : '';
-    } else if (cleaned.length <= 6) {
-      formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2)}`;
-    } else if (cleaned.length <= 10) {
-      formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`;
-    } else {
-      formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7, 11)}`;
-    }
-    
-    setBasicInfo(prev => ({ ...prev, phone: formatted }));
-  };
-  
-  // Formatar telefone do gerente durante digitação
-  const handleManagerPhoneChange = (text) => {
-    // Remove caracteres não numéricos
-    const cleaned = text.replace(/\D/g, '');
-    
-    // Formata o telefone ((XX) XXXXX-XXXX ou (XX) XXXX-XXXX)
-    let formatted = '';
-    if (cleaned.length <= 2) {
-      formatted = cleaned.length ? `(${cleaned}` : '';
-    } else if (cleaned.length <= 6) {
-      formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2)}`;
-    } else if (cleaned.length <= 10) {
-      formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`;
-    } else {
-      formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7, 11)}`;
-    }
-    
-    setCondoInfo(prev => ({ ...prev, managerPhone: formatted }));
-  };
-  
-  // Formatar placa do veículo durante digitação
-  const handleVehiclePlateChange = (text) => {
-    // Remove caracteres não alfanuméricos e converte para maiúsculas
-    const cleaned = text.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    
-    // Formata a placa (ABC-1234 ou ABC1D23)
-    let formatted = cleaned;
-    if (cleaned.length > 3) {
-      formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
-    }
-    
-    setDriverInfo(prev => ({ ...prev, vehiclePlate: formatted }));
-  };
-
-  // Manipulador para o processo de registro
+  // Realizar o cadastro
   const handleRegister = async () => {
+    if (!validateUserPassword()) return;
+    
+    Keyboard.dismiss();
+    setLoading(true);
+    setShowError(false);
+    
     try {
-      setLoading(true);
-      
-      // Registrar com Firebase Auth
-      const user = await register(basicInfo.email, basicInfo.password, basicInfo.name);
-      
-      // Upload de documentos, se houver
-      const uploadResults = {};
-      
-      if (documents.profilePhoto) {
-        const filename = documents.profilePhoto.split('/').pop();
-        const path = `profile_photos/${user.uid}/${filename}`;
-        const result = await StorageService.uploadFile(path, documents.profilePhoto);
-        uploadResults.profilePhotoURL = result.url;
-      }
-      
-      if (userType === 'driver' && documents.driverLicense) {
-        const filename = documents.driverLicense.split('/').pop();
-        const path = `driver_documents/${user.uid}/license_${filename}`;
-        const result = await StorageService.uploadFile(path, documents.driverLicense);
-        uploadResults.driverLicenseURL = result.url;
-      }
-      
-      if (userType === 'driver' && documents.vehiclePhoto) {
-        const filename = documents.vehiclePhoto.split('/').pop();
-        const path = `driver_documents/${user.uid}/vehicle_${filename}`;
-        const result = await StorageService.uploadFile(path, documents.vehiclePhoto);
-        uploadResults.vehiclePhotoURL = result.url;
-      }
-      
-      if (userType === 'condo' && documents.condoPhoto) {
-        const filename = documents.condoPhoto.split('/').pop();
-        const path = `condo_photos/${user.uid}/${filename}`;
-        const result = await StorageService.uploadFile(path, documents.condoPhoto);
-        uploadResults.condoPhotoURL = result.url;
-      }
-      
-      // Criar documento do usuário no Firestore com dados específicos
-      const userData = {
-        email: basicInfo.email,
-        displayName: basicInfo.name,
-        phone: basicInfo.phone,
-        type: userType,
-        status: userType === 'driver' ? 'pending' : 'active', // Motoristas precisam de aprovação
-        photoURL: uploadResults.profilePhotoURL || null,
-        createdAt: new Date()
-      };
-      
-      await FirestoreService.createDocumentWithId('users', user.uid, userData);
-      
-      // Criar documento específico do tipo no Firestore
-      if (userType === 'resident') {
-        const residentData = {
-          name: basicInfo.name,
-          email: basicInfo.email,
-          phone: basicInfo.phone,
-          cpf: residentInfo.cpf,
-          condoId: residentInfo.condoId,
-          condoName: residentInfo.condoName,
-          unit: residentInfo.unit,
-          block: residentInfo.block,
-          status: 'active',
-          type: 'resident',
-          photoURL: uploadResults.profilePhotoURL || null,
-          createdAt: new Date()
-        };
-        
-        await FirestoreService.createDocumentWithId('residents', user.uid, residentData);
-      }
-      else if (userType === 'driver') {
-        const driverData = {
-          name: basicInfo.name,
-          email: basicInfo.email,
-          phone: basicInfo.phone,
-          cpf: driverInfo.cpf,
-          vehiclePlate: driverInfo.vehiclePlate.toUpperCase(),
-          vehicleModel: driverInfo.vehicleModel,
-          vehicleYear: driverInfo.vehicleYear,
-          vehicleColor: driverInfo.vehicleColor,
-          serviceType: driverInfo.serviceType,
-          licenseNumber: driverInfo.licenseNumber,
-          status: 'pending',  // Aguardando aprovação
-          verificationStatus: 'pending',
-          isAvailable: true,
-          type: 'driver',
-          photoURL: uploadResults.profilePhotoURL || null,
-          driverLicenseURL: uploadResults.driverLicenseURL || null,
-          vehiclePhotoURL: uploadResults.vehiclePhotoURL || null,
-          createdAt: new Date()
-        };
-        
-        await FirestoreService.createDocumentWithId('drivers', user.uid, driverData);
-      }
-      else if (userType === 'condo') {
-        const condoData = {
-          name: basicInfo.name,
-          email: basicInfo.email,
-          phone: basicInfo.phone,
-          cnpj: condoInfo.cnpj,
-          address: condoInfo.address,
-          city: condoInfo.city,
-          state: condoInfo.state,
-          zipCode: condoInfo.zipCode,
-          units: parseInt(condoInfo.units, 10) || 0,
-          blocks: parseInt(condoInfo.blocks, 10) || 0,
-          managerName: condoInfo.managerName,
-          managerPhone: condoInfo.managerPhone,
-          status: 'active',
-          verified: false, // Aguardando verificação
-          plan: 'free', // Plano gratuito inicial
-          type: 'condo',
-          photoURL: uploadResults.condoPhotoURL || null,
-          createdAt: new Date()
-        };
-        
-        await FirestoreService.createDocumentWithId('condos', user.uid, condoData);
-      }
-      
-      // Exibir feedback ao usuário
-      if (userType === 'driver') {
-        Alert.alert(
-          'Cadastro Realizado',
-          'Seu cadastro foi realizado com sucesso! Aguarde a aprovação para começar a utilizar o aplicativo.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          'Cadastro Realizado',
-          'Seu cadastro foi realizado com sucesso!',
-          [{ text: 'OK' }]
-        );
-      }
-      
-      // O redirecionamento será tratado pelo navegador de autenticação
+      console.log("Tentando registrar usuário do tipo:", userType)
+      await register(email, password, name, userType);
+      // A navegação é gerenciada pelo hook useAuth
+      console.log("Registro bem-sucedido, usuário:", user.uid);
     } catch (error) {
-      console.error('Erro no registro:', error);
-      setFormErrors(prev => ({ 
-        ...prev, 
-        general: 'Falha no registro. Por favor, tente novamente.' 
-      }));
+      let errorMsg = 'Falha ao criar conta. Tente novamente.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        errorMsg = 'Este email já está sendo usado por outra conta';
+      } else if (error.code === 'auth/weak-password') {
+        errorMsg = 'Senha muito fraca. Use uma senha mais forte.';
+      }
+      
+      setErrorMessage(errorMsg);
+      setShowError(true);
+    } finally {
       setLoading(false);
     }
   };
-
-  // Renderizar tela de acordo com a etapa atual
-  const renderCurrentStep = () => {
-    // Etapa 1 - Informações básicas (comum para todos os tipos)
-    if (currentStep === 1) {
-      return (
-        <View>
-          <Input
-            label="Nome completo"
-            value={basicInfo.name}
-            onChangeText={(text) => setBasicInfo(prev => ({ ...prev, name: text }))}
-            error={formErrors.name}
-            autoCapitalize="words"
-            placeholder="Digite seu nome completo"
-          />
-          
-          <Input
-            label="Email"
-            value={basicInfo.email}
-            onChangeText={(text) => setBasicInfo(prev => ({ ...prev, email: text }))}
-            error={formErrors.email}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholder="Digite seu email"
-          />
-          
-          <Input
-            label="Telefone"
-            value={basicInfo.phone}
-            onChangeText={handlePhoneChange}
-            error={formErrors.phone}
-            keyboardType="phone-pad"
-            placeholder="(XX) XXXXX-XXXX"
-          />
-          
-          <Input
-            label="Senha"
-            value={basicInfo.password}
-            onChangeText={(text) => setBasicInfo(prev => ({ ...prev, password: text }))}
-            error={formErrors.password}
-            secureTextEntry
-            placeholder="Digite sua senha"
-          />
-          
-          <Input
-            label="Confirmar senha"
-            value={basicInfo.confirmPassword}
-            onChangeText={(text) => setBasicInfo(prev => ({ ...prev, confirmPassword: text }))}
-            error={formErrors.confirmPassword}
-            secureTextEntry
-            placeholder="Confirme sua senha"
-          />
-        </View>
-      );
-    }
-    
-    // Etapa 2 para moradores
-    else if (currentStep === 2 && userType === 'resident') {
-      return (
-        <View>
-          <Input
-            label="CPF"
-            value={residentInfo.cpf}
-            onChangeText={handleCPFChange}
-            error={formErrors.cpf}
-            keyboardType="number-pad"
-            placeholder="XXX.XXX.XXX-XX"
-            maxLength={14}
-          />
-          
-          <Input
-            label="Nome do Condomínio"
-            value={residentInfo.condoName}
-            onChangeText={(text) => setResidentInfo(prev => ({ ...prev, condoName: text }))}
-            error={formErrors.condoName}
-            placeholder="Digite o nome do seu condomínio"
-            autoCapitalize="words"
-          />
-          
-          <Input
-            label="Unidade"
-            value={residentInfo.unit}
-            onChangeText={(text) => setResidentInfo(prev => ({ ...prev, unit: text }))}
-            error={formErrors.unit}
-            keyboardType="number-pad"
-            placeholder="Digite o número da sua unidade"
-          />
-          
-          <Input
-            label="Bloco (opcional)"
-            value={residentInfo.block}
-            onChangeText={(text) => setResidentInfo(prev => ({ ...prev, block: text }))}
-            error={formErrors.block}
-            placeholder="Digite o bloco da sua unidade"
-            autoCapitalize="characters"
-          />
-          
-          {/* Seleção de condomínio (poderia ser implementado com um dropdown/auto-complete) */}
-          <Text style={styles.label}>Condomínio (selecione um):</Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={styles.condoList}
-          >
-            {residentInfo.availableCondos.map((condo) => (
-              <TouchableOpacity 
-                key={condo.id}
-                style={[
-                  styles.condoCard,
-                  residentInfo.condoId === condo.id && styles.selectedCondoCard
-                ]}
-                onPress={() => setResidentInfo(prev => ({
-                  ...prev,
-                  condoId: condo.id,
-                  condoName: condo.name
-                }))}
-              >
-                <MaterialCommunityIcons 
-                  name="office-building" 
-                  size={24} 
-                  color={residentInfo.condoId === condo.id ? theme.colors.primary : "#757575"}
-                />
-                <Text style={styles.condoCardText}>{condo.name}</Text>
-                <Text style={styles.condoCardSubtext}>{condo.address}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {formErrors.condoId && (
-            <Text style={styles.errorText}>{formErrors.condoId}</Text>
-          )}
-          
-          <Text style={styles.sectionTitle}>Foto de Perfil</Text>
-          <TouchableOpacity 
-            style={styles.photoPickerButton}
-            onPress={() => handleChooseImage('profilePhoto')}
-          >
-            {documents.profilePhoto ? (
-              <Image 
-                source={{ uri: documents.profilePhoto }} 
-                style={styles.photoPreview} 
-              />
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <MaterialCommunityIcons name="camera" size={40} color="#757575" />
-                <Text style={styles.photoPlaceholderText}>Toque para adicionar</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {formErrors.profilePhoto && (
-            <Text style={styles.errorText}>{formErrors.profilePhoto}</Text>
-          )}
-        </View>
-      );
-    }
-    
-    // Etapa 2 para motoristas
-    else if (currentStep === 2 && userType === 'driver') {
-      return (
-        <View>
-          <Input
-            label="CPF"
-            value={driverInfo.cpf}
-            onChangeText={handleCPFChange}
-            error={formErrors.cpf}
-            keyboardType="number-pad"
-            placeholder="XXX.XXX.XXX-XX"
-            maxLength={14}
-          />
-          
-          <Input
-            label="Número da CNH"
-            value={driverInfo.licenseNumber}
-            onChangeText={(text) => setDriverInfo(prev => ({ ...prev, licenseNumber: text }))}
-            error={formErrors.licenseNumber}
-            keyboardType="number-pad"
-            placeholder="Digite o número da sua CNH"
-          />
-          
-          <Input
-            label="Placa do Veículo"
-            value={driverInfo.vehiclePlate}
-            onChangeText={handleVehiclePlateChange}
-            error={formErrors.vehiclePlate}
-            placeholder="ABC-1234"
-            autoCapitalize="characters"
-            maxLength={8}
-          />
-          
-          <Input
-            label="Modelo do Veículo"
-            value={driverInfo.vehicleModel}
-            onChangeText={(text) => setDriverInfo(prev => ({ ...prev, vehicleModel: text }))}
-            error={formErrors.vehicleModel}
-            placeholder="Ex: Honda Civic Preto"
-            autoCapitalize="words"
-          />
-          
-          <View style={styles.row}>
-            <Input
-              label="Ano do Veículo"
-              value={driverInfo.vehicleYear}
-              onChangeText={(text) => setDriverInfo(prev => ({ ...prev, vehicleYear: text }))}
-              error={formErrors.vehicleYear}
-              keyboardType="number-pad"
-              placeholder="Ex: 2022"
-              maxLength={4}
-              style={styles.halfInput}
+  
+  // Renderizar o formulário do passo 1 (nome e email)
+  const renderStep1 = () => (
+    <>
+      {/* Campo de Nome */}
+      <View style={styles.inputContainer}>
+        <MaterialCommunityIcons name="account-outline" size={24} color={theme.colors.primary} style={styles.inputIcon} />
+        <TextInput
+          label="Nome completo"
+          value={name}
+          onChangeText={setName}
+          autoCapitalize="words"
+          returnKeyType="next"
+          onSubmitEditing={() => emailInputRef.current?.focus()}
+          style={styles.input}
+          mode="outlined"
+          outlineColor="#E0E0E0"
+          activeOutlineColor={theme.colors.primary}
+          error={showError && !name.trim()}
+        />
+      </View>
+      
+      {/* Campo de Email */}
+      <View style={styles.inputContainer}>
+        <MaterialCommunityIcons name="email-outline" size={24} color={theme.colors.primary} style={styles.inputIcon} />
+        <TextInput
+          ref={emailInputRef}
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          returnKeyType="next"
+          onSubmitEditing={nextStep}
+          style={styles.input}
+          mode="outlined"
+          outlineColor="#E0E0E0"
+          activeOutlineColor={theme.colors.primary}
+          error={showError && (!email.trim() || !isValidEmail(email))}
+        />
+      </View>
+    </>
+  );
+  
+  // Renderizar o formulário do passo 2 (senha)
+  const renderStep2 = () => (
+    <>
+      {/* Campo de Senha */}
+      <View style={styles.inputContainer}>
+        <MaterialCommunityIcons name="lock-outline" size={24} color={theme.colors.primary} style={styles.inputIcon} />
+        <TextInput
+          ref={passwordInputRef}
+          label="Senha"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          returnKeyType="next"
+          onSubmitEditing={() => confirmPasswordInputRef.current?.focus()}
+          style={styles.input}
+          mode="outlined"
+          outlineColor="#E0E0E0"
+          activeOutlineColor={theme.colors.primary}
+          error={showError && !password}
+          right={
+            <TextInput.Icon 
+              icon={showPassword ? "eye-off" : "eye"} 
+              onPress={() => setShowPassword(!showPassword)}
+              color="#757575"
             />
-            
-            <Input
-              label="Cor do Veículo"
-              value={driverInfo.vehicleColor}
-              onChangeText={(text) => setDriverInfo(prev => ({ ...prev, vehicleColor: text }))}
-              error={formErrors.vehicleColor}
-              placeholder="Ex: Preto"
-              autoCapitalize="words"
-              style={styles.halfInput}
+          }
+        />
+      </View>
+      
+      {/* Indicador de Força da Senha */}
+      <View style={styles.passwordStrengthContainer}>
+        <ProgressBar 
+          progress={passwordStrength} 
+          color={getPasswordStrengthColor()} 
+          style={styles.passwordStrengthBar}
+        />
+        <Text style={[styles.passwordStrengthText, { color: getPasswordStrengthColor() }]}>
+          {passwordStrength === 0 ? '' : 
+            passwordStrength < 0.3 ? 'Senha fraca' : 
+            passwordStrength < 0.6 ? 'Senha média' : 'Senha forte'}
+        </Text>
+      </View>
+      
+      {/* Campo de Confirmar Senha */}
+      <View style={styles.inputContainer}>
+        <MaterialCommunityIcons name="lock-check-outline" size={24} color={theme.colors.primary} style={styles.inputIcon} />
+        <TextInput
+          ref={confirmPasswordInputRef}
+          label="Confirmar senha"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry={!showConfirmPassword}
+          returnKeyType="done"
+          onSubmitEditing={handleRegister}
+          style={styles.input}
+          mode="outlined"
+          outlineColor="#E0E0E0"
+          activeOutlineColor={theme.colors.primary}
+          error={showError && password !== confirmPassword}
+          right={
+            <TextInput.Icon 
+              icon={showConfirmPassword ? "eye-off" : "eye"} 
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              color="#757575"
             />
-          </View>
-          
-          <Text style={styles.label}>Tipo de Serviço:</Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={styles.serviceTypeList}
-          >
-            {[
-              { id: 'app', icon: 'cellphone', label: 'Aplicativo' },
-              { id: 'taxi', icon: 'taxi', label: 'Taxista' },
-              { id: 'delivery', icon: 'package-variant-closed', label: 'Entregador' },
-              { id: 'private', icon: 'car', label: 'Particular' }
-            ].map((type) => (
-              <TouchableOpacity 
-                key={type.id}
-                style={[
-                  styles.serviceTypeCard,
-                  driverInfo.serviceType === type.id && styles.selectedServiceTypeCard
-                ]}
-                onPress={() => setDriverInfo(prev => ({ ...prev, serviceType: type.id }))}
-              >
-                <MaterialCommunityIcons 
-                  name={type.icon} 
-                  size={24} 
-                  color={driverInfo.serviceType === type.id ? theme.colors.primary : "#757575"}
-                />
-                <Text style={styles.serviceTypeText}>{type.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          }
+        />
+      </View>
+      
+      {/* Dicas para Senha Forte */}
+      <View style={styles.passwordTipsContainer}>
+        <Text style={styles.passwordTipsTitle}>Dicas para uma senha forte:</Text>
+        <View style={styles.passwordTipItem}>
+          <MaterialCommunityIcons 
+            name={password.length >= 8 ? "check-circle" : "information"} 
+            size={16} 
+            color={password.length >= 8 ? "#4CAF50" : "#757575"} 
+          />
+          <Text style={styles.passwordTipText}>Pelo menos 8 caracteres</Text>
         </View>
-      );
-    }
-    
-    // Etapa 3 para motoristas
-    else if (currentStep === 3 && userType === 'driver') {
-      return (
-        <View>
-          <Text style={styles.sectionTitle}>Foto de Perfil</Text>
-          <TouchableOpacity 
-            style={styles.photoPickerButton}
-            onPress={() => handleChooseImage('profilePhoto')}
-          >
-            {documents.profilePhoto ? (
-              <Image 
-                source={{ uri: documents.profilePhoto }} 
-                style={styles.photoPreview} 
-              />
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <MaterialCommunityIcons name="account" size={40} color="#757575" />
-                <Text style={styles.photoPlaceholderText}>Toque para adicionar</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {formErrors.profilePhoto && (
-            <Text style={styles.errorText}>{formErrors.profilePhoto}</Text>
-          )}
-          
-          <Divider style={styles.divider} />
-          
-          <Text style={styles.sectionTitle}>Foto da CNH</Text>
-          <TouchableOpacity 
-            style={styles.photoPickerButton}
-            onPress={() => handleChooseImage('driverLicense')}
-          >
-            {documents.driverLicense ? (
-              <Image 
-                source={{ uri: documents.driverLicense }} 
-                style={styles.photoPreview} 
-              />
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <MaterialCommunityIcons name="card-account-details" size={40} color="#757575" />
-                <Text style={styles.photoPlaceholderText}>Toque para adicionar</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {formErrors.driverLicense && (
-            <Text style={styles.errorText}>{formErrors.driverLicense}</Text>
-          )}
-          
-          <Divider style={styles.divider} />
-          
-          <Text style={styles.sectionTitle}>Foto do Veículo</Text>
-          <TouchableOpacity 
-            style={styles.photoPickerButton}
-            onPress={() => handleChooseImage('vehiclePhoto')}
-          >
-            {documents.vehiclePhoto ? (
-              <Image 
-                source={{ uri: documents.vehiclePhoto }} 
-                style={styles.photoPreview} 
-              />
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <MaterialCommunityIcons name="car" size={40} color="#757575" />
-                <Text style={styles.photoPlaceholderText}>Toque para adicionar</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {formErrors.vehiclePhoto && (
-            <Text style={styles.errorText}>{formErrors.vehiclePhoto}</Text>
-          )}
-          
-          <Text style={styles.infoText}>
-            Suas informações serão revisadas para aprovação. Você receberá uma notificação quando seu cadastro for aprovado.
-          </Text>
+        <View style={styles.passwordTipItem}>
+          <MaterialCommunityIcons 
+            name={/\d/.test(password) ? "check-circle" : "information"} 
+            size={16}
+            color={/\d/.test(password) ? "#4CAF50" : "#757575"} 
+          />
+          <Text style={styles.passwordTipText}>Inclua números</Text>
         </View>
-      );
-    }
-    
-    // Etapa 2 para condomínios
-    else if (currentStep === 2 && userType === 'condo') {
-      return (
-        <View>
-          <Input
-            label="CNPJ"
-            value={condoInfo.cnpj}
-            onChangeText={handleCNPJChange}
-            error={formErrors.cnpj}
-            keyboardType="number-pad"
-            placeholder="XX.XXX.XXX/XXXX-XX"
-            maxLength={18}
+        <View style={styles.passwordTipItem}>
+          <MaterialCommunityIcons 
+            name={/[!@#$%^&*(),.?":{}|<>]/.test(password) ? "check-circle" : "information"} 
+            size={16}
+            color={/[!@#$%^&*(),.?":{}|<>]/.test(password) ? "#4CAF50" : "#757575"} 
           />
-          
-          <Input
-            label="Endereço"
-            value={condoInfo.address}
-            onChangeText={(text) => setCondoInfo(prev => ({ ...prev, address: text }))}
-            error={formErrors.address}
-            placeholder="Endereço completo do condomínio"
-            autoCapitalize="words"
-          />
-          
-          <View style={styles.row}>
-            <Input
-              label="Cidade"
-              value={condoInfo.city}
-              onChangeText={(text) => setCondoInfo(prev => ({ ...prev, city: text }))}
-              error={formErrors.city}
-              placeholder="Cidade"
-              autoCapitalize="words"
-              style={styles.halfInput}
-            />
-            
-            <Input
-              label="Estado"
-              value={condoInfo.state}
-              onChangeText={(text) => setCondoInfo(prev => ({ ...prev, state: text }))}
-              error={formErrors.state}
-              placeholder="UF"
-              autoCapitalize="characters"
-              maxLength={2}
-              style={styles.halfInput}
-            />
-          </View>
-          
-          <Input
-            label="CEP"
-            value={condoInfo.zipCode}
-            onChangeText={(text) => setCondoInfo(prev => ({ ...prev, zipCode: text.replace(/\D/g, '') }))}
-            error={formErrors.zipCode}
-            keyboardType="number-pad"
-            placeholder="XXXXX-XXX"
-            maxLength={9}
-          />
-          
-          <View style={styles.row}>
-            <Input
-              label="Número de Unidades"
-              value={condoInfo.units}
-              onChangeText={(text) => setCondoInfo(prev => ({ ...prev, units: text.replace(/\D/g, '') }))}
-              error={formErrors.units}
-              keyboardType="number-pad"
-              placeholder="Ex: 100"
-              style={styles.halfInput}
-            />
-            
-            <Input
-              label="Número de Blocos"
-              value={condoInfo.blocks}
-              onChangeText={(text) => setCondoInfo(prev => ({ ...prev, blocks: text.replace(/\D/g, '') }))}
-              error={formErrors.blocks}
-              keyboardType="number-pad"
-              placeholder="Ex: 4"
-              style={styles.halfInput}
-            />
-          </View>
+          <Text style={styles.passwordTipText}>Inclua caracteres especiais (!@#$)</Text>
         </View>
-      );
-    }
-    
-    // Etapa 3 para condomínios
-    else if (currentStep === 3 && userType === 'condo') {
-      return (
-        <View>
-          <Input
-            label="Nome do Responsável/Síndico"
-            value={condoInfo.managerName}
-            onChangeText={(text) => setCondoInfo(prev => ({ ...prev, managerName: text }))}
-            error={formErrors.managerName}
-            placeholder="Nome completo do responsável"
-            autoCapitalize="words"
+        <View style={styles.passwordTipItem}>
+          <MaterialCommunityIcons 
+            name={/[a-z]/.test(password) && /[A-Z]/.test(password) ? "check-circle" : "information"} 
+            size={16}
+            color={/[a-z]/.test(password) && /[A-Z]/.test(password) ? "#4CAF50" : "#757575"} 
           />
-          
-          <Input
-            label="Telefone do Responsável"
-            value={condoInfo.managerPhone}
-            onChangeText={handleManagerPhoneChange}
-            error={formErrors.managerPhone}
-            keyboardType="phone-pad"
-            placeholder="(XX) XXXXX-XXXX"
-          />
-          
-          <Text style={styles.sectionTitle}>Foto do Condomínio</Text>
-          <TouchableOpacity 
-            style={styles.photoPickerButton}
-            onPress={() => handleChooseImage('condoPhoto')}
-          >
-            {documents.condoPhoto ? (
-              <Image 
-                source={{ uri: documents.condoPhoto }} 
-                style={styles.photoPreview} 
-              />
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <MaterialCommunityIcons name="office-building" size={40} color="#757575" />
-                <Text style={styles.photoPlaceholderText}>Toque para adicionar</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {formErrors.condoPhoto && (
-            <Text style={styles.errorText}>{formErrors.condoPhoto}</Text>
-          )}
-          
-          <Text style={styles.infoText}>
-            Seu condomínio terá acesso ao plano gratuito inicialmente. Você poderá fazer upgrade para planos com mais recursos a qualquer momento.
-          </Text>
+          <Text style={styles.passwordTipText}>Letras maiúsculas e minúsculas</Text>
         </View>
-      );
+      </View>
+    </>
+  );
+  
+  // Renderizar botões de navegação
+  const renderButtons = () => (
+    <View style={styles.buttonsContainer}>
+      <Button
+        mode="outlined"
+        onPress={prevStep}
+        style={styles.backButton}
+        labelStyle={styles.backButtonLabel}
+        contentStyle={styles.backButtonContent}
+        disabled={loading}
+      >
+        Voltar
+      </Button>
+      
+      <Button
+        mode="contained"
+        onPress={nextStep}
+        loading={loading}
+        disabled={loading}
+        style={styles.nextButton}
+        labelStyle={styles.nextButtonLabel}
+        contentStyle={styles.nextButtonContent}
+      >
+        {step === 1 ? 'Próximo' : 'Cadastrar'}
+      </Button>
+    </View>
+  );
+  
+  // Obter o título do formulário com base no tipo de usuário
+  const getFormTitle = () => {
+    switch (userType) {
+      case 'driver':
+        return 'Cadastro de Motorista';
+      case 'condo':
+        return 'Cadastro de Condomínio';
+      default:
+        return 'Cadastro de Morador';
     }
-    
-    return null;
   };
-
+  
+  // Renderizar ícone do tipo de usuário
+  const renderUserTypeIcon = () => {
+    let iconName = 'account';
+    let iconColor = theme.colors.primary;
+    
+    switch (userType) {
+      case 'driver':
+        iconName = 'car';
+        iconColor = '#FF9800';
+        break;
+      case 'condo':
+        iconName = 'office-building';
+        iconColor = '#4CAF50';
+        break;
+      default:
+        iconName = 'home-account';
+        iconColor = '#2196F3';
+    }
+    
+    return (
+      <View style={[styles.userTypeIconContainer, { backgroundColor: iconColor + '20' }]}>
+        <MaterialCommunityIcons name={iconName} size={32} color={iconColor} />
+      </View>
+    );
+  };
+  
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : null}
+      style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.container}>
-          {/* Cabeçalho */}
-          <View style={styles.header}>
-            <Text style={styles.title}>{getUserTypeTitle()}</Text>
-            <Text style={styles.subtitle}>
-              {getStepDescription()}
-            </Text>
-          </View>
-
-          {/* Barra de progresso */}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Cabeçalho */}
+        <View style={styles.header}>
+          <IconButton
+            icon="arrow-left"
+            size={24}
+            onPress={prevStep}
+            style={styles.backIcon}
+          />
           <View style={styles.progressContainer}>
             <ProgressBar
-              progress={currentStep / totalSteps}
+              progress={progress}
               color={theme.colors.primary}
               style={styles.progressBar}
             />
-            <Text style={styles.progressText}>
-              Etapa {currentStep} de {totalSteps}
-            </Text>
-          </View>
-
-          {/* Formulário */}
-          <Card style={styles.card}>
-            {formErrors.general ? (
-              <Text style={styles.errorText}>{formErrors.general}</Text>
-            ) : null}
-
-            {renderCurrentStep()}
-
-            <View style={styles.buttonContainer}>
-              <Button
-                mode="outlined"
-                onPress={handlePreviousStep}
-                style={styles.button}
-                disabled={loading}
-              >
-                {currentStep === 1 ? 'Cancelar' : 'Anterior'}
-              </Button>
-
-              <Button
-                mode="contained"
-                onPress={handleNextStep}
-                loading={loading}
-                disabled={loading}
-                style={styles.button}
-              >
-                {currentStep < totalSteps ? 'Próximo' : 'Cadastrar'}
-              </Button>
+            <View style={styles.stepsTextContainer}>
+              <Text style={styles.stepText}>
+                Passo {step} de 2
+              </Text>
+              <Text style={styles.stepsCount}>
+                {step === 1 ? 'Informações básicas' : 'Criando sua senha'}
+              </Text>
             </View>
-          </Card>
-
-          {/* Rodapé para navegação para o login */}
-          <View style={styles.footer}>
-            <Text>Já tem uma conta? </Text>
+          </View>
+        </View>
+        
+        {/* Formulário */}
+        <Animated.View 
+          style={[
+            styles.formContainer,
+            { 
+              opacity: formOpacity,
+              transform: [{ translateY: formTranslateY }]
+            }
+          ]}
+        >
+          <Surface style={styles.formSurface}>
+            <View style={styles.formTitleContainer}>
+              {renderUserTypeIcon()}
+              <Text style={styles.formTitle}>{getFormTitle()}</Text>
+            </View>
+            
+            {step === 1 ? renderStep1() : renderStep2()}
+            
+            {renderButtons()}
+          </Surface>
+          
+          {/* Link para Login */}
+          <View style={styles.loginContainer}>
+            <Text style={styles.loginText}>Já tem uma conta?</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-              <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>
+              <Text style={[styles.loginLink, { color: theme.colors.primary }]}>
                 Entrar
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </ScrollView>
+      
+      {/* Snackbar para Erros */}
+      <Snackbar
+        visible={showError}
+        onDismiss={() => setShowError(false)}
+        duration={3000}
+        style={styles.errorSnackbar}
+      >
+        {errorMessage}
+      </Snackbar>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-  },
   container: {
     flex: 1,
-    padding: 20,
-    alignItems: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#777',
-    textAlign: 'center',
-  },
-  progressContainer: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-  },
-  progressText: {
-    textAlign: 'center',
-    marginTop: 5,
-    fontSize: 14,
-    color: '#777',
-  },
-  card: {
-    width: '100%',
-    maxWidth: 500,
-    padding: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  halfInput: {
-    width: '48%',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  button: {
-    flex: 1,
-    marginHorizontal: 5,
-  },
-  footer: {
-    flexDirection: 'row',
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  errorText: {
-    color: '#f13a59',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  label: {
-    fontSize: 14,
-    marginBottom: 5,
-    marginTop: 10,
-    color: '#757575',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 15,
-    marginBottom: 10,
-  },
-  condoList: {
-    flexDirection: 'row',
-    marginBottom: 15,
-  },
-  condoCard: {
-    padding: 10,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    minWidth: 150,
-    maxWidth: 200,
-    alignItems: 'center',
-  },
-  selectedCondoCard: {
-    borderColor: '#1E88E5',
-    backgroundColor: '#E3F2FD',
-  },
-  condoCardText: {
-    marginTop: 5,
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  condoCardSubtext: {
-    fontSize: 12,
-    color: '#757575',
-    textAlign: 'center',
-  },
-  serviceTypeList: {
-    flexDirection: 'row',
-    marginBottom: 15,
-  },
-  serviceTypeCard: {
-    padding: 10,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    width: 100,
-    alignItems: 'center',
-  },
-  selectedServiceTypeCard: {
-    borderColor: '#1E88E5',
-    backgroundColor: '#E3F2FD',
-  },
-  serviceTypeText: {
-    marginTop: 5,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  photoPickerButton: {
-    width: '100%',
-    height: 200,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    marginBottom: 15,
-    overflow: 'hidden',
-  },
-  photoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: '#f5f5f5',
   },
-  photoPlaceholderText: {
-    marginTop: 10,
-    color: '#757575',
+  scrollContainer: {
+    flexGrow: 1,
+    paddingBottom: 24,
   },
-  photoPreview: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
-  divider: {
-    marginVertical: 15,
+  backIcon: {
+    marginRight: 16,
   },
-  infoText: {
+  progressContainer: {
+    flex: 1,
+  },
+  progressBar: {
+    height: 6,
+    borderRadius: 3,
+    marginBottom: 8,
+  },
+  stepsTextContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  stepText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  stepsCount: {
     fontSize: 14,
     color: '#757575',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginTop: 10,
-    paddingHorizontal: 10,
+  },
+  formContainer: {
+    paddingHorizontal: 24,
+  },
+  formSurface: {
+    padding: 24,
+    borderRadius: 12,
+    elevation: 4,
+  },
+  formTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  userTypeIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  formTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  inputIcon: {
+    marginRight: 12,
+    marginTop: 8,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  passwordStrengthContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 36,
+  },
+  passwordStrengthBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  passwordStrengthText: {
+    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  passwordTipsContainer: {
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 24,
+    marginLeft: 36,
+  },
+  passwordTipsTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  passwordTipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  passwordTipText: {
+    fontSize: 12,
+    color: '#757575',
+    marginLeft: 8,
+  },
+  buttonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    flex: 0.48,
+    borderRadius: 8,
+  },
+  backButtonLabel: {
+    fontSize: 16,
+  },
+  backButtonContent: {
+    height: 48,
+  },
+  nextButton: {
+    flex: 0.48,
+    borderRadius: 8,
+  },
+  nextButtonLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  nextButtonContent: {
+    height: 48,
+  },
+  loginContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  loginText: {
+    color: '#757575',
+    marginRight: 4,
+  },
+  loginLink: {
+    fontWeight: 'bold',
+  },
+  errorSnackbar: {
+    backgroundColor: '#F44336',
   },
 });
 
