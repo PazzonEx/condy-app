@@ -1,28 +1,165 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from 'react-native-paper';
 import Button from '../components/Button';
 import { useAuth } from '../hooks/useAuth';
 
-// Componente temporário para telas não implementadas
-const PlaceholderScreen = ({ title }) => {
-  const { logout } = useAuth();
-  
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>Esta tela ainda será implementada</Text>
-      <Button mode="contained" onPress={logout} style={styles.button}>
-        Sair
-      </Button>
-    </View>
-  );
-};
+// Componentes
+import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
+import AdminCondosScreen from '../screens/admin/AdminCondosScreen';
+import AdminDriversScreen from '../screens/admin/AdminDriversScreen';
+import AdminSettingsScreen from '../screens/admin/AdminSettingsScreen';
+import AdminApprovalScreen from '../screens/admin/AdminApprovalScreen';
+import AdminUsersListScreen from '../screens/admin/AdminUsersListScreen';
+import AdminUserDetailsScreen from '../screens/admin/AdminUserDetailsScreen';
+import AdminSettingsPasswordScreen from '../screens/admin/AdminSettingsPasswordScreen';
 
 // Criar navegador de tabs
 const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
+
+// Stack para Dashboard
+const DashboardStack = () => {
+  const theme = useTheme();
+  
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.primary,
+        },
+        headerTintColor: 'white',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <Stack.Screen 
+        name="AdminDashboard" 
+        component={AdminDashboardScreen}
+        options={{ title: 'Dashboard' }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+// Stack para Condomínios
+const CondosStack = () => {
+  const theme = useTheme();
+  
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.primary,
+        },
+        headerTintColor: 'white',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <Stack.Screen 
+        name="AdminCondos" 
+        component={AdminCondosScreen}
+        options={{ title: 'Condomínios' }}
+      />
+      <Stack.Screen 
+        name="AdminUsersList" 
+        component={AdminUsersListScreen}
+        options={({ route }) => ({ 
+          title: route.params?.title || 'Usuários',
+        })}
+      />
+      <Stack.Screen 
+        name="AdminUserDetails" 
+        component={AdminUserDetailsScreen}
+        options={({ route }) => ({ 
+          title: route.params?.userName || 'Detalhes do Usuário',
+        })}
+      />
+      <Stack.Screen 
+        name="AdminApproval" 
+        component={AdminApprovalScreen}
+        options={{
+          title: 'Aprovar Usuário',
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+// Stack para Motoristas
+const DriversStack = () => {
+  const theme = useTheme();
+  
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.primary,
+        },
+        headerTintColor: 'white',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <Stack.Screen 
+        name="AdminDrivers" 
+        component={AdminDriversScreen}
+        options={{ title: 'Motoristas' }}
+      />
+      <Stack.Screen 
+        name="AdminUserDetails" 
+        component={AdminUserDetailsScreen}
+        options={({ route }) => ({ 
+          title: route.params?.userName || 'Detalhes do Motorista',
+        })}
+      />
+      <Stack.Screen 
+        name="AdminApproval" 
+        component={AdminApprovalScreen}
+        options={{
+          title: 'Aprovar Motorista',
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+// Stack para Configurações
+const SettingsStack = () => {
+  const theme = useTheme();
+  
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.primary,
+        },
+        headerTintColor: 'white',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <Stack.Screen 
+        name="AdminSettings" 
+        component={AdminSettingsScreen}
+        options={{ title: 'Configurações' }}
+      />
+      <Stack.Screen 
+        name="AdminSettingsPassword" 
+        component={AdminSettingsPasswordScreen}
+        options={{ title: 'Senha de Administrador' }}
+      />
+    </Stack.Navigator>
+  );
+};
 
 // Navegador para Administradores
 const AdminNavigator = () => {
@@ -35,16 +172,16 @@ const AdminNavigator = () => {
           let iconName;
 
           switch (route.name) {
-            case 'AdminDashboard':
+            case 'DashboardTab':
               iconName = focused ? 'view-dashboard' : 'view-dashboard-outline';
               break;
-            case 'AdminCondos':
+            case 'CondosTab':
               iconName = focused ? 'office-building' : 'office-building-outline';
               break;
-            case 'AdminDrivers':
+            case 'DriversTab':
               iconName = focused ? 'car' : 'car-outline';
               break;
-            case 'AdminSettings':
+            case 'SettingsTab':
               iconName = focused ? 'cog' : 'cog-outline';
               break;
             default:
@@ -55,52 +192,31 @@ const AdminNavigator = () => {
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: 'gray',
+        headerShown: false,
       })}
     >
       <Tab.Screen 
-        name="AdminDashboard" 
-        component={() => <PlaceholderScreen title="Dashboard Admin" />}
-        options={{ title: 'Dashboard' }}
+        name="DashboardTab" 
+        component={DashboardStack}
+        options={{ tabBarLabel: 'Dashboard' }}
       />
       <Tab.Screen 
-        name="AdminCondos" 
-        component={() => <PlaceholderScreen title="Gerenciar Condomínios" />}
-        options={{ title: 'Condomínios' }}
+        name="CondosTab" 
+        component={CondosStack}
+        options={{ tabBarLabel: 'Condomínios' }}
       />
       <Tab.Screen 
-        name="AdminDrivers" 
-        component={() => <PlaceholderScreen title="Gerenciar Motoristas" />}
-        options={{ title: 'Motoristas' }}
+        name="DriversTab" 
+        component={DriversStack}
+        options={{ tabBarLabel: 'Motoristas' }}
       />
       <Tab.Screen 
-        name="AdminSettings" 
-        component={() => <PlaceholderScreen title="Configurações" />}
-        options={{ title: 'Configurações' }}
+        name="SettingsTab" 
+        component={SettingsStack}
+        options={{ tabBarLabel: 'Configurações' }}
       />
     </Tab.Navigator>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#777',
-    marginBottom: 30,
-  },
-  button: {
-    width: '80%',
-  },
-});
 
 export default AdminNavigator;

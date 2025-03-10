@@ -1,14 +1,50 @@
 // src/screens/shared/PendingApprovalScreen.js
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Image } from 'react-native';
-import { Text, Button, Surface, useTheme } from 'react-native-paper';
+import { Text, Button, Surface, useTheme, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import LottieView from 'lottie-react-native';
+import FirestoreService from '../../services/firestore.service';
 
 const PendingApprovalScreen = () => {
   const theme = useTheme();
-  const { userProfile, logout } = useAuth();
+  const { userProfile, logout, reloadUserProfile } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  
+  // Verificar se o status mudou a cada 10 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkApprovalStatus();
+    }, 10000);
+    
+    // Limpar intervalo ao desmontar
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Verificar status de aprovação
+  const checkApprovalStatus = async () => {
+    if (checkingStatus) return;
+    
+    try {
+      setCheckingStatus(true);
+      
+      // Forçar recarregamento do perfil de usuário
+      await reloadUserProfile();
+    } catch (error) {
+      console.error('Erro ao verificar status de aprovação:', error);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+  
+  // Verificar manualmente o status de aprovação
+  const handleCheckStatus = async () => {
+    setLoading(true);
+    await checkApprovalStatus();
+    setLoading(false);
+  };
   
   // Obter informações relevantes com base no tipo de usuário
   const getUserTypeInfo = () => {
@@ -71,12 +107,31 @@ const PendingApprovalScreen = () => {
         </Text>
         
         <Button
+          mode="contained"
+          onPress={handleCheckStatus}
+          style={styles.checkButton}
+          loading={loading || checkingStatus}
+          disabled={loading || checkingStatus}
+        >
+          Verificar Status
+        </Button>
+        
+        <Button
           mode="outlined"
           onPress={logout}
           style={styles.logoutButton}
+          disabled={loading || checkingStatus}
         >
           Sair
         </Button>
+        
+        {userProfile?.type === 'resident' && (
+          <View style={styles.contactContainer}>
+            <Text style={styles.contactText}>
+              Caso deseje agilizar a aprovação, entre em contato com a administração do seu condomínio.
+            </Text>
+          </View>
+        )}
       </Surface>
     </View>
   );
@@ -134,8 +189,25 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 20,
   },
+  checkButton: {
+    width: '100%',
+    marginBottom: 12,
+  },
   logoutButton: {
     width: '100%',
+    marginBottom: 16,
+  },
+  contactContainer: {
+    borderTopWidth: 1,
+    borderTopColor: '#EEEEEE',
+    paddingTop: 16,
+    width: '100%',
+  },
+  contactText: {
+    fontSize: 14,
+    color: '#757575',
+    textAlign: 'center',
+    fontStyle: 'italic',
   }
 });
 

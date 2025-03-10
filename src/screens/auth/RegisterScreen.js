@@ -9,7 +9,13 @@ import {
   Platform,
   Keyboard,
   Animated,
-  Dimensions
+  Dimensions,
+  StatusBar,
+  SafeAreaView,
+  ActivityIndicator,
+  Alert,
+  Image,
+  BackHandler
 } from 'react-native';
 import { 
   Text, 
@@ -17,27 +23,31 @@ import {
   Button, 
   Surface, 
   useTheme, 
-
   Snackbar,
-  IconButton
+  ProgressBar,
+  IconButton,
+  Divider
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ProgressBar } from 'react-native-paper';
+import * as Animatable from 'react-native-animatable';
+import { useNavigation, CommonActions } from '@react-navigation/native';
+
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
 
-// Utilidades
+// Utilitários
 import { isValidEmail, validatePassword } from '../../utils/validation';
 
 // Constantes
 const { width, height } = Dimensions.get('window');
 
-const RegisterScreen = ({ navigation, route }) => {
+const RegisterScreen = ({ route }) => {
   const theme = useTheme();
   const { register } = useAuth();
+  const navigation = useNavigation();
   
   // Obter o tipo de usuário da navegação
-  const userType = route.params.userType ;
+  const userType = route.params?.userType;
   
   // Estados
   const [name, setName] = useState('');
@@ -47,7 +57,7 @@ const RegisterScreen = ({ navigation, route }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [error, setError] = useState(null);
   const [showError, setShowError] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [step, setStep] = useState(1);
@@ -63,17 +73,27 @@ const RegisterScreen = ({ navigation, route }) => {
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formTranslateY = useRef(new Animated.Value(50)).current;
   
+  // Efeito para lidar com o botão de voltar do hardware
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleCancel();
+      return true; // Previne o comportamento padrão
+    });
+    
+    return () => backHandler.remove();
+  }, []);
+  
   // Efeito para monitorar teclado
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       () => {
         setKeyboardVisible(true);
       }
     );
     
     const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
       }
@@ -124,21 +144,16 @@ const RegisterScreen = ({ navigation, route }) => {
   }, [password]);
   
   // Efeito para animar o progresso do cadastro
-  const [progress, setProgress] = useState(0.33);
-
-// No useEffect para atualizar o progresso
-useEffect(() => {
-  const progressPercentage = step === 1 ? 0.33 : step === 2 ? 0.66 : 1;
-  setProgress(progressPercentage);
-  
-  // Animar apenas para visual
-  Animated.timing(progressValue, {
-    toValue: progressPercentage,
-    duration: 300,
-    useNativeDriver: false,
-  }).start();
-}, [step]);
-
+  useEffect(() => {
+    const progressPercentage = step === 1 ? 0.33 : step === 2 ? 0.66 : 1;
+    
+    // Animar apenas para visual
+    Animated.timing(progressValue, {
+      toValue: progressPercentage,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [step]);
   
   // Obter a cor da barra de progresso de senha
   const getPasswordStrengthColor = () => {
@@ -150,13 +165,13 @@ useEffect(() => {
   // Validar nome
   const validateName = () => {
     if (!name.trim()) {
-      setErrorMessage('Informe seu nome completo');
+      setError('Informe seu nome completo');
       setShowError(true);
       return false;
     }
     
     if (name.trim().length < 3) {
-      setErrorMessage('Nome muito curto');
+      setError('Nome muito curto');
       setShowError(true);
       return false;
     }
@@ -167,13 +182,13 @@ useEffect(() => {
   // Validar email
   const validateEmail = () => {
     if (!email.trim()) {
-      setErrorMessage('Informe seu email');
+      setError('Informe seu email');
       setShowError(true);
       return false;
     }
     
     if (!isValidEmail(email)) {
-      setErrorMessage('Email inválido');
+      setError('Email inválido');
       setShowError(true);
       return false;
     }
@@ -184,20 +199,19 @@ useEffect(() => {
   // Validar senha
   const validateUserPassword = () => {
     if (!password) {
-      setErrorMessage('Informe uma senha');
+      setError('Informe uma senha');
       setShowError(true);
       return false;
     }
     
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.valid) {
-      setErrorMessage(passwordValidation.errors[0]);
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
       setShowError(true);
       return false;
     }
     
     if (password !== confirmPassword) {
-      setErrorMessage('As senhas não coincidem');
+      setError('As senhas não coincidem');
       setShowError(true);
       return false;
     }
@@ -222,33 +236,74 @@ useEffect(() => {
     if (step === 2) {
       setStep(1);
     } else {
-      navigation.goBack();
+      handleCancel();
     }
+  };
+  
+  // Função para cancelar o registro e voltar à tela inicial
+  const handleCancel = () => {
+    // Perguntar ao usuário se deseja realmente cancelar
+    Alert.alert(
+      "Cancelar cadastro",
+      "Tem certeza que deseja cancelar o cadastro? Todos os dados informados serão perdidos.",
+      [
+        {
+          text: "Não",
+          style: "cancel"
+        },
+        {
+          text: "Sim, cancelar",
+          onPress: () => {
+            // Navegar para a tela inicial
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              })
+            );
+          }
+        }
+      ]
+    );
   };
   
   // Realizar o cadastro
   const handleRegister = async () => {
-    if (!validateUserPassword()) return;
-    
-    Keyboard.dismiss();
-    setLoading(true);
-    setShowError(false);
-    
     try {
-      console.log("Tentando registrar usuário do tipo:", userType)
-      await register(email, password, name, userType);
-      // A navegação é gerenciada pelo hook useAuth
-      console.log("Registro bem-sucedido, usuário:", user.uid);
+      if (!validateUserPassword()) return;
+      
+      Keyboard.dismiss();
+      setLoading(true);
+      setShowError(false);
+      
+      console.log("Tentando registrar usuário do tipo:", userType);
+      
+      const user = await register(email, password, name, userType);
+      console.log("Registro bem-sucedido, navegando...");
+      
+      // Exibir mensagem de sucesso antes de continuar
+      Alert.alert(
+        "Cadastro realizado com sucesso",
+        "Agora complete seu perfil para usar o aplicativo.",
+        [{ text: "OK" }]
+      );
+      
+      // A navegação será gerenciada automaticamente pelo sistema
     } catch (error) {
+      console.error("Erro durante o registro:", error);
       let errorMsg = 'Falha ao criar conta. Tente novamente.';
       
       if (error.code === 'auth/email-already-in-use') {
         errorMsg = 'Este email já está sendo usado por outra conta';
       } else if (error.code === 'auth/weak-password') {
         errorMsg = 'Senha muito fraca. Use uma senha mais forte.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMsg = 'Endereço de email inválido';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMsg = 'Erro de conexão. Verifique sua internet.';
       }
       
-      setErrorMessage(errorMsg);
+      setError(errorMsg);
       setShowError(true);
     } finally {
       setLoading(false);
@@ -417,7 +472,7 @@ useEffect(() => {
         contentStyle={styles.backButtonContent}
         disabled={loading}
       >
-        Voltar
+        {step === 1 ? 'Cancelar' : 'Voltar'}
       </Button>
       
       <Button
@@ -474,42 +529,47 @@ useEffect(() => {
   
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : null}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
+      <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
       <ScrollView 
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         {/* Cabeçalho */}
-        <View style={styles.header}>
-          <IconButton
-            icon="arrow-left"
-            size={24}
-            onPress={prevStep}
-            style={styles.backIcon}
-          />
-          <View style={styles.progressContainer}>
-            <ProgressBar
-              progress={progress}
-              color={theme.colors.primary}
-              style={styles.progressBar}
+        <SafeAreaView>
+          <View style={styles.header}>
+            <IconButton
+              icon="arrow-left"
+              size={24}
+              onPress={handleCancel}
+              style={styles.backIcon}
             />
-            <View style={styles.stepsTextContainer}>
-              <Text style={styles.stepText}>
-                Passo {step} de 2
-              </Text>
-              <Text style={styles.stepsCount}>
-                {step === 1 ? 'Informações básicas' : 'Criando sua senha'}
-              </Text>
+            <View style={styles.progressContainer}>
+              <ProgressBar
+                progress={step / 2}
+                color={theme.colors.primary}
+                style={styles.progressBar}
+              />
+              <View style={styles.stepsTextContainer}>
+                <Text style={styles.stepText}>
+                  Passo {step} de 2
+                </Text>
+                <Text style={styles.stepsCount}>
+                  {step === 1 ? 'Informações básicas' : 'Criando sua senha'}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
         
         {/* Formulário */}
         <Animated.View 
           style={[
-            styles.formContainer,
+            styles.formContainer, 
             { 
               opacity: formOpacity,
               transform: [{ translateY: formTranslateY }]
@@ -546,7 +606,7 @@ useEffect(() => {
         duration={3000}
         style={styles.errorSnackbar}
       >
-        {errorMessage}
+        {error}
       </Snackbar>
     </KeyboardAvoidingView>
   );
@@ -557,6 +617,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContainer: {
     flexGrow: 1,
     paddingBottom: 24,
@@ -566,7 +629,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 16,
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   backIcon: {
     marginRight: 16,
@@ -598,7 +661,7 @@ const styles = StyleSheet.create({
   formSurface: {
     padding: 24,
     borderRadius: 12,
-    elevation: 4,
+    elevation: 2,
   },
   formTitleContainer: {
     flexDirection: 'row',

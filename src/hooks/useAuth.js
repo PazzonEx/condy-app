@@ -1,11 +1,11 @@
-// src/contexts/AuthContext.js (versão atualizada mantendo suas funcionalidades)
+// src/contexts/AuthContext.js (versão integrada com funcionalidade de cancelamento)
 import { useState, useEffect, useContext, createContext } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, firestore } from '../config/firebase';
 import AuthService from '../services/auth.service';
 import FirestoreService from '../services/firestore.service';
 import NotificationService from '../services/notification.service';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Contexto de autenticação
@@ -23,6 +23,7 @@ export function AuthProvider({ children }) {
   // Novos estados
   const [initializing, setInitializing] = useState(true);
   const [notificationToken, setNotificationToken] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Efeito para monitorar o estado de autenticação
   useEffect(() => {
@@ -36,6 +37,13 @@ export function AuthProvider({ children }) {
           const userDoc = await FirestoreService.getDocument('users', user.uid);
           setUserProfile(userDoc);
           
+          // Verificar se é admin
+          if (userDoc?.type === 'admin') {
+            setIsAdmin(true);
+          } else {
+            setIsAdmin(false);
+          }
+          
           // Registrar token de notificação
           registerNotificationToken(user.uid);
           
@@ -48,6 +56,7 @@ export function AuthProvider({ children }) {
           }
         } else {
           setUserProfile(null);
+          setIsAdmin(false);
         }
       } catch (err) {
         console.error('Erro ao processar usuário autenticado:', err);
@@ -62,67 +71,67 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  // No AuthContext.js - no método loadUserTypeSpecificData
-const loadUserTypeSpecificData = async (userType, userId) => {
-  try {
-    if (!userType || !userId) return;
-    
-    let typeSpecificData = null;
-    let collectionName = ''; 
-    
-    switch (userType) {
-      case 'driver':
-        collectionName = 'drivers';
-        break;
-      case 'resident':
-        collectionName = 'residents';
-        break;
-      case 'condo':
-        collectionName = 'condos';
-        break;
-      case 'admin':
-        collectionName = 'admins';
-        break;
-      default:
-        return;
-    }
-    
-    // Verificar se o documento existe
-    typeSpecificData = await FirestoreService.getDocument(collectionName, userId);
-    
-    // Se não existir, criar um documento básico
-    if (!typeSpecificData && collectionName) {
-      console.log(`Criando documento básico em ${collectionName} para usuário ${userId}`);
+  // Carregar dados específicos do tipo de usuário
+  const loadUserTypeSpecificData = async (userType, userId) => {
+    try {
+      if (!userType || !userId) return;
       
-      const userData = await FirestoreService.getDocument('users', userId);
+      let typeSpecificData = null;
+      let collectionName = ''; 
       
-      // Dados básicos para o documento
-      const basicData = {
-        name: userData?.displayName || '',
-        email: userData?.email || '',
-        status: 'pending_verification',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        profileComplete: false
-      };
+      switch (userType) {
+        case 'driver':
+          collectionName = 'drivers';
+          break;
+        case 'resident':
+          collectionName = 'residents';
+          break;
+        case 'condo':
+          collectionName = 'condos';
+          break;
+        case 'admin':
+          collectionName = 'admins';
+          break;
+        default:
+          return;
+      }
       
-      // Criar o documento
-      await FirestoreService.createDocumentWithId(collectionName, userId, basicData);
-      
-      // Buscar o documento recém-criado
+      // Verificar se o documento existe
       typeSpecificData = await FirestoreService.getDocument(collectionName, userId);
+      
+      // Se não existir, criar um documento básico
+      if (!typeSpecificData && collectionName) {
+        console.log(`Criando documento básico em ${collectionName} para usuário ${userId}`);
+        
+        const userData = await FirestoreService.getDocument('users', userId);
+        
+        // Dados básicos para o documento
+        const basicData = {
+          name: userData?.displayName || '',
+          email: userData?.email || '',
+          status: 'pending_verification',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          profileComplete: false
+        };
+        
+        // Criar o documento
+        await FirestoreService.createDocumentWithId(collectionName, userId, basicData);
+        
+        // Buscar o documento recém-criado
+        typeSpecificData = await FirestoreService.getDocument(collectionName, userId);
+      }
+      
+      if (typeSpecificData) {
+        // Atualizar perfil com dados específicos
+        setUserProfile(prev => ({ ...prev, ...typeSpecificData }));
+      }
+    } catch (error) {
+      console.error(`Erro ao carregar dados específicos de ${userType}:`, error);
     }
-    
-    if (typeSpecificData) {
-      // Atualizar perfil com dados específicos
-      setUserProfile(prev => ({ ...prev, ...typeSpecificData }));
-    }
-  } catch (error) {
-    console.error(`Erro ao carregar dados específicos de ${userType}:`, error);
-  }
-};
+  };
   
-  // Registrar token de notificação (nova função)
+  // Registrar token de notificação
   const registerNotificationToken = async (userId) => {
     try {
       // Obter token de notificação
@@ -139,7 +148,7 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
   
-  // Atualizar última atividade do usuário (nova função)
+  // Atualizar última atividade do usuário
   const updateLastActive = async (userId) => {
     try {
       await updateDoc(doc(firestore, 'users', userId), {
@@ -150,7 +159,7 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
 
-  // Função para verificar senha de acesso ao plano (mantida do seu código)
+  // Função para verificar senha de acesso ao plano
   const verifySubscriptionPassword = async (condoId, password) => {
     try {
       const condoRef = doc(firestore, 'condos', condoId);
@@ -177,12 +186,12 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
   
-  // Resetar verificação ao sair da tela (mantida do seu código)
+  // Resetar verificação ao sair da tela
   const resetSubscriptionPasswordVerification = () => {
     setIsSubscriptionPasswordVerified(false);
   };
   
-  // Função para definir/alterar a senha (mantida do seu código)
+  // Função para definir/alterar a senha
   const setSubscriptionPassword = async (condoId, currentPassword, newPassword) => {
     try {
       // Primeiro verifica se a senha atual está correta
@@ -205,7 +214,7 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
   
-  // Função para criar senha inicial (mantida do seu código)
+  // Função para criar senha inicial
   const createInitialSubscriptionPassword = async (condoId, password) => {
     try {
       const condoRef = doc(firestore, 'condos', condoId);
@@ -235,10 +244,11 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
 
+  // Registrar usuário
   const register = async (email, password, displayName, userType) => {
     setError(null);
     try {
-      console.log("Registrando usuário do tipo:", userType); // Log para depuração
+      console.log("Registrando usuário do tipo:", userType); 
       
       // Registrar com Firebase Auth
       const userCredential = await AuthService.register(email, password, displayName);
@@ -254,7 +264,7 @@ const loadUserTypeSpecificData = async (userType, userId) => {
       const userData = {
         email,
         displayName,
-        type: userType, // Certifique-se de que isso está definido corretamente
+        type: userType,
         status: initialStatus,
         profileComplete: false,
         createdAt: serverTimestamp(),
@@ -262,7 +272,7 @@ const loadUserTypeSpecificData = async (userType, userId) => {
         lastActive: serverTimestamp()
       };
       
-      console.log("Salvando dados do usuário:", userData); // Log para depuração
+      console.log("Salvando dados do usuário:", userData);
       
       // Criar documento do usuário no Firestore
       await FirestoreService.createDocumentWithId('users', user.uid, userData);
@@ -286,7 +296,8 @@ const loadUserTypeSpecificData = async (userType, userId) => {
       throw err;
     }
   };
-  // Criar documento específico baseado no tipo de usuário (nova função)
+
+  // Criar documento específico baseado no tipo de usuário
   const createUserTypeSpecificDocument = async (userType, userId, basicData) => {
     try {
       const timestamp = serverTimestamp();
@@ -347,7 +358,7 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
 
-  // Login de usuário (melhorada)
+  // Login de usuário
   const login = async (email, password) => {
     setError(null);
     try {
@@ -363,19 +374,97 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
 
-  // Logout de usuário (mantida do seu código)
+  // Logout de usuário - Implementada com funcionalidade de limpeza de dados
   const logout = async () => {
-    setError(null);
     try {
       await AuthService.logout();
+      
+      // Limpar estados locais
+      setCurrentUser(null);
+      setUserProfile(null);
+      setIsAdmin(false);
+      setNotificationToken(null);
+      setIsSubscriptionPasswordVerified(false);
+      
       return true;
-    } catch (err) {
-      setError(err.message);
-      throw err;
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+      throw error;
     }
   };
+  
+  // Função para cancelar cadastro e limpar dados - ATUALIZADA
+const cancelRegistration = async (userType) => {
+  try {
+    if (!currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
+    
+    // Determinar coleção com base no tipo de usuário
+    let collectionName = '';
+    switch (userType) {
+      case 'resident':
+        collectionName = 'residents';
+        break;
+      case 'driver':
+        collectionName = 'drivers';
+        break;
+      case 'condo':
+        collectionName = 'condos';
+        break;
+      default:
+        throw new Error('Tipo de usuário inválido');
+    }
+    
+    // Excluir documento específico do tipo de usuário
+    if (collectionName) {
+      try {
+        await FirestoreService.deleteDocument(collectionName, currentUser.uid);
+      } catch (err) {
+        console.log(`Erro ao excluir documento em ${collectionName}:`, err);
+        // Continuar mesmo com erro
+      }
+    }
+    
+    // Excluir documento de usuário
+    try {
+      await FirestoreService.deleteDocument('users', currentUser.uid);
+    } catch (err) {
+      console.log('Erro ao excluir documento de usuário:', err);
+      // Continuar mesmo com erro
+    }
+    
+    // Tentar excluir conta de autenticação
+    try {
+      await AuthService.deleteAccount(currentUser);
+    } catch (deleteError) {
+      console.log('Erro ao excluir conta de autenticação:', deleteError);
+      // Se o erro for de autenticação recente, apenas fazemos logout
+      if (deleteError.code === 'auth/requires-recent-login') {
+        console.log('Não foi possível excluir a conta devido a auth/requires-recent-login. Fazendo apenas logout.');
+        // Não interromper o fluxo, apenas continuar para o logout
+      } else {
+        // Para outros erros, pode ser útil propagar
+        throw deleteError;
+      }
+    }
+    
+    // Fazer logout - sempre executado
+    await logout();
+    
+    return true;
+  } catch (error) {
+    console.error('Erro ao cancelar cadastro:', error);
+    // Se o erro for de autenticação recente, ainda queremos fazer logout
+    if (error.code === 'auth/requires-recent-login') {
+      await logout();
+      return true;
+    }
+    throw error;
+  }
+};
 
-  // Redefinir senha (mantida do seu código)
+  // Redefinir senha
   const resetPassword = async (email) => {
     setError(null);
     try {
@@ -386,80 +475,107 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
   };
 
-  // Atualizar perfil do usuário (melhorada)
-  // No AuthContext.js
-const updateProfile = async (profile, userData) => {
-  setError(null);
-  try {
+  // Atualizar perfil do usuário
+  const updateProfile = async (profile, userData) => {
+    setError(null);
+    try {
+      if (currentUser) {
+        // Atualizar perfil no Firebase Auth se necessário
+        if (profile.displayName) {
+          await AuthService.updateUserProfile(currentUser, { 
+            displayName: profile.displayName 
+          });
+        }
+        
+        // Dados para atualização no Firestore
+        const updateData = {
+          ...userData,
+          updatedAt: serverTimestamp()
+        };
+        
+        if (profile.displayName) {
+          updateData.displayName = profile.displayName;
+        }
+        
+        if (profile.profileComplete !== undefined) {
+          updateData.profileComplete = profile.profileComplete;
+        }
+        
+        if (profile.status !== undefined) {
+          updateData.status = profile.status;
+        }
+        
+        // Atualizar dados no Firestore
+        await FirestoreService.updateDocument('users', currentUser.uid, updateData);
+        
+        // Importante: Atualizar estado local ANTES de retornar
+        setUserProfile(prev => ({
+          ...prev,
+          ...updateData,
+          ...profile // Garantir que as props específicas do profile sejam aplicadas
+        }));
+        
+        // Esperar um momento para garantir que o estado seja atualizado
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        return true;
+      }
+      return false;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  // Recarregar perfil do usuário
+  const reloadUserProfile = async () => {
     if (currentUser) {
-      // Atualizar perfil no Firebase Auth se necessário
-      if (profile.displayName) {
-        await AuthService.updateUserProfile(currentUser, { 
-          displayName: profile.displayName 
-        });
+      try {
+        // Buscar informações atualizadas do usuário no Firestore
+        const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
+        setUserProfile(userDoc);
+        
+        // Recarregar dados específicos
+        if (userDoc?.type) {
+          await loadUserTypeSpecificData(userDoc.type, currentUser.uid);
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Erro ao recarregar perfil:', error);
+        return false;
       }
-      
-      // Dados para atualização no Firestore
-      const updateData = {
-        ...userData,
-        updatedAt: serverTimestamp()
-      };
-      
-      if (profile.displayName) {
-        updateData.displayName = profile.displayName;
-      }
-      
-      if (profile.profileComplete !== undefined) {
-        updateData.profileComplete = profile.profileComplete;
-      }
-      
-      if (profile.status !== undefined) {
-        updateData.status = profile.status;
-      }
-      
-      // Atualizar dados no Firestore
-      await FirestoreService.updateDocument('users', currentUser.uid, updateData);
-      
-      // Importante: Atualizar estado local ANTES de retornar
-      setUserProfile(prev => ({
-        ...prev,
-        ...updateData,
-        ...profile // Garantir que as props específicas do profile sejam aplicadas
-      }));
-      
-      // Esperar um momento para garantir que o estado seja atualizado
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      return true;
     }
     return false;
-  } catch (err) {
-    setError(err.message);
-    throw err;
-  }
-};
-const reloadUserProfile = async () => {
-  if (currentUser) {
+  };
+
+  // Reautenticar usuário (necessário para operações sensíveis) - NOVA FUNÇÃO
+  const reauthenticate = async (password) => {
+    if (!currentUser) throw new Error('Usuário não autenticado');
+
     try {
-      // Buscar informações atualizadas do usuário no Firestore
-      const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
-      setUserProfile(userDoc);
-      
-      // Recarregar dados específicos
-      if (userDoc?.type) {
-        await loadUserTypeSpecificData(userDoc.type, currentUser.uid);
-      }
-      
+      await AuthService.reauthenticate(currentUser.email, password);
       return true;
     } catch (error) {
-      console.error('Erro ao recarregar perfil:', error);
-      return false;
+      console.error('Erro ao reautenticar:', error);
+      throw error;
     }
-  }
-  return false;
-};
+  };
 
-  // Valores expostos pelo contexto (atualizados incluindo todos os seus)
+  // Atualizar senha do usuário - NOVA FUNÇÃO
+  const updateUserPassword = async (newPassword) => {
+    try {
+      if (!currentUser) throw new Error('Usuário não autenticado');
+      
+      await AuthService.updatePassword(currentUser, newPassword);
+      return true;
+    } catch (error) {
+      console.error('Erro ao atualizar senha:', error);
+      throw error;
+    }
+  };
+
+  // Valores expostos pelo contexto (atualizados incluindo todos os seus + novos)
   const value = {
     currentUser,
     userProfile,
@@ -467,19 +583,22 @@ const reloadUserProfile = async () => {
     loading,
     initializing,
     error,
+    isAdmin,
     notificationToken,
     register,
     login,
     logout,
+    cancelRegistration, // Nova função para cancelar cadastro
     reloadUserProfile,
     resetPassword,
     updateProfile,
+    reauthenticate, // Nova função para reautenticar
+    updateUserPassword, // Nova função para atualizar senha
     isSubscriptionPasswordVerified,
     verifySubscriptionPassword,
     resetSubscriptionPasswordVerification,
     setSubscriptionPassword,
     createInitialSubscriptionPassword,
-    // Novas funções exportadas
     loadUserTypeSpecificData,
     updateLastActive
   };

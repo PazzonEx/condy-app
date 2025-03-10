@@ -1,4 +1,3 @@
-// src/screens/auth/UserTypeScreen.js
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
@@ -6,15 +5,20 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Animated,
-  Dimensions
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  StatusBar
 } from 'react-native';
 import { 
   Text, 
   Surface, 
   useTheme, 
-  IconButton
+  IconButton,
+  Button
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Animatable from 'react-native-animatable';
 
 // Constantes
 const { width, height } = Dimensions.get('window');
@@ -26,8 +30,8 @@ const UserTypeScreen = ({ navigation }) => {
   const [selectedType, setSelectedType] = useState(null);
   
   // Animações
-  const fadeIn = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(50)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(50)).current;
   const cardScales = [
     useRef(new Animated.Value(1)).current,
     useRef(new Animated.Value(1)).current,
@@ -37,12 +41,12 @@ const UserTypeScreen = ({ navigation }) => {
   // Efeito para animar entrada
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeIn, {
+      Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 500,
         useNativeDriver: true,
       }),
-      Animated.timing(translateY, {
+      Animated.timing(translateYAnim, {
         toValue: 0,
         duration: 600,
         useNativeDriver: true,
@@ -110,121 +114,157 @@ const UserTypeScreen = ({ navigation }) => {
   };
   
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      <View style={styles.header}>
-        <IconButton
-          icon="arrow-left"
-          size={24}
-          onPress={handleGoBack}
-          style={styles.backButton}
-        />
-      </View>
-      
-      <Animated.View 
-        style={[
-          styles.content,
-          {
-            opacity: fadeIn,
-            transform: [{ translateY }]
-          }
-        ]}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Quem é você?</Text>
-        <Text style={styles.subtitle}>
-          Selecione o tipo de conta que melhor se enquadra ao seu perfil.
-          Isso nos ajudará a personalizar sua experiência.
-        </Text>
+        <View style={styles.header}>
+          <IconButton
+            icon="arrow-left"
+            size={24}
+            onPress={handleGoBack}
+            style={styles.backButton}
+          />
+        </View>
         
-        {/* Opção: Morador */}
-        <Animated.View>
-          <TouchableOpacity
-            style={getCardStyle('resident', 0)}
-            onPress={() => handleSelectType('resident')}
-            activeOpacity={0.9}
+        <Animated.View 
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: translateYAnim }]
+            }
+          ]}
+        >
+          <Animatable.Text 
+            animation="fadeInUp" 
+            delay={300} 
+            style={styles.title}
           >
-            <Surface style={styles.userTypeCardInner}>
-              <View style={[styles.iconContainer, getIconBackground('resident')]}>
-                <MaterialCommunityIcons name="home-account" size={32} color={getUserTypeColor('resident')} />
-              </View>
-              <View style={styles.userTypeTextContainer}>
-                <Text style={styles.userTypeTitle}>Morador</Text>
-                <Text style={styles.userTypeDescription}>
-                  Você mora em um condomínio e deseja liberar acesso para motoristas
-                </Text>
-              </View>
-              <MaterialCommunityIcons 
-                name={selectedType === 'resident' ? "check-circle" : "chevron-right"} 
-                size={24} 
-                color={selectedType === 'resident' ? getUserTypeColor('resident') : '#BDBDBD'} 
-              />
-            </Surface>
-          </TouchableOpacity>
-        </Animated.View>
-        
-        {/* Opção: Motorista */}
-        <Animated.View>
-          <TouchableOpacity
-            style={getCardStyle('driver', 1)}
-            onPress={() => handleSelectType('driver')}
-            activeOpacity={0.9}
+            Quem é você?
+          </Animatable.Text>
+          <Animatable.Text 
+            animation="fadeInUp" 
+            delay={400} 
+            style={styles.subtitle}
           >
-            <Surface style={styles.userTypeCardInner}>
-              <View style={[styles.iconContainer, getIconBackground('driver')]}>
-                <MaterialCommunityIcons name="car" size={32} color={getUserTypeColor('driver')} />
-              </View>
-              <View style={styles.userTypeTextContainer}>
-                <Text style={styles.userTypeTitle}>Motorista</Text>
-                <Text style={styles.userTypeDescription}>
-                  Você é motorista de aplicativo, taxista ou entregador que acessa condomínios
-                </Text>
-              </View>
-              <MaterialCommunityIcons 
-                name={selectedType === 'driver' ? "check-circle" : "chevron-right"} 
-                size={24} 
-                color={selectedType === 'driver' ? getUserTypeColor('driver') : '#BDBDBD'} 
-              />
-            </Surface>
-          </TouchableOpacity>
-        </Animated.View>
-        
-        {/* Opção: Condomínio */}
-        <Animated.View>
-          <TouchableOpacity
-            style={getCardStyle('condo', 2)}
-            onPress={() => handleSelectType('condo')}
-            activeOpacity={0.9}
+            Selecione o tipo de conta que melhor se enquadra ao seu perfil.
+            Isso nos ajudará a personalizar sua experiência.
+          </Animatable.Text>
+          
+          {/* Opção: Morador */}
+          <Animatable.View animation="fadeInUp" delay={500} useNativeDriver>
+            <TouchableOpacity
+              style={getCardStyle('resident', 0)}
+              onPress={() => handleSelectType('resident')}
+              activeOpacity={0.9}
+            >
+              <Surface style={styles.userTypeCardInner}>
+                <View style={[styles.iconContainer, getIconBackground('resident')]}>
+                  <MaterialCommunityIcons name="home-account" size={32} color={getUserTypeColor('resident')} />
+                </View>
+                <View style={styles.userTypeTextContainer}>
+                  <Text style={styles.userTypeTitle}>Morador</Text>
+                  <Text style={styles.userTypeDescription}>
+                    Você mora em um condomínio e deseja liberar acesso para motoristas
+                  </Text>
+                </View>
+                <MaterialCommunityIcons 
+                  name={selectedType === 'resident' ? "check-circle" : "chevron-right"} 
+                  size={24} 
+                  color={selectedType === 'resident' ? getUserTypeColor('resident') : '#BDBDBD'} 
+                />
+              </Surface>
+            </TouchableOpacity>
+          </Animatable.View>
+          
+          {/* Opção: Motorista */}
+          <Animatable.View animation="fadeInUp" delay={600} useNativeDriver>
+            <TouchableOpacity
+              style={getCardStyle('driver', 1)}
+              onPress={() => handleSelectType('driver')}
+              activeOpacity={0.9}
+            >
+              <Surface style={styles.userTypeCardInner}>
+                <View style={[styles.iconContainer, getIconBackground('driver')]}>
+                  <MaterialCommunityIcons name="car" size={32} color={getUserTypeColor('driver')} />
+                </View>
+                <View style={styles.userTypeTextContainer}>
+                  <Text style={styles.userTypeTitle}>Motorista</Text>
+                  <Text style={styles.userTypeDescription}>
+                    Você é motorista de aplicativo, taxista ou entregador que acessa condomínios
+                  </Text>
+                </View>
+                <MaterialCommunityIcons 
+                  name={selectedType === 'driver' ? "check-circle" : "chevron-right"} 
+                  size={24} 
+                  color={selectedType === 'driver' ? getUserTypeColor('driver') : '#BDBDBD'} 
+                />
+              </Surface>
+            </TouchableOpacity>
+          </Animatable.View>
+          
+          {/* Opção: Condomínio */}
+          <Animatable.View animation="fadeInUp" delay={700} useNativeDriver>
+            <TouchableOpacity
+              style={getCardStyle('condo', 2)}
+              onPress={() => handleSelectType('condo')}
+              activeOpacity={0.9}
+            >
+              <Surface style={styles.userTypeCardInner}>
+                <View style={[styles.iconContainer, getIconBackground('condo')]}>
+                  <MaterialCommunityIcons name="office-building" size={32} color={getUserTypeColor('condo')} />
+                </View>
+                <View style={styles.userTypeTextContainer}>
+                  <Text style={styles.userTypeTitle}>Condomínio</Text>
+                  <Text style={styles.userTypeDescription}>
+                    Você é um administrador ou porteiro de condomínio que gerencia acessos
+                  </Text>
+                </View>
+                <MaterialCommunityIcons 
+                  name={selectedType === 'condo' ? "check-circle" : "chevron-right"} 
+                  size={24} 
+                  color={selectedType === 'condo' ? getUserTypeColor('condo') : '#BDBDBD'} 
+                />
+              </Surface>
+            </TouchableOpacity>
+          </Animatable.View>
+          
+          {selectedType && (
+            <Animatable.View animation="fadeIn" delay={300}>
+              <Button 
+                mode="contained" 
+                onPress={() => navigation.navigate('Register', { userType: selectedType })}
+                style={styles.continueButton}
+                labelStyle={styles.continueButtonText}
+              >
+                Continuar
+              </Button>
+            </Animatable.View>
+          )}
+          
+          <Animatable.Text 
+            animation="fadeIn" 
+            delay={800} 
+            style={styles.footnote}
           >
-            <Surface style={styles.userTypeCardInner}>
-              <View style={[styles.iconContainer, getIconBackground('condo')]}>
-                <MaterialCommunityIcons name="office-building" size={32} color={getUserTypeColor('condo')} />
-              </View>
-              <View style={styles.userTypeTextContainer}>
-                <Text style={styles.userTypeTitle}>Condomínio</Text>
-                <Text style={styles.userTypeDescription}>
-                  Você é um administrador ou porteiro de condomínio que gerencia acessos
-                </Text>
-              </View>
-              <MaterialCommunityIcons 
-                name={selectedType === 'condo' ? "check-circle" : "chevron-right"} 
-                size={24} 
-                color={selectedType === 'condo' ? getUserTypeColor('condo') : '#BDBDBD'} 
-              />
-            </Surface>
-          </TouchableOpacity>
+            Você pode mudar o tipo de conta mais tarde nas configurações do aplicativo.
+          </Animatable.Text>
         </Animated.View>
-        
-        <Text style={styles.footnote}>
-          Você pode mudar o tipo de conta mais tarde nas configurações do aplicativo.
-        </Text>
-      </Animated.View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -257,6 +297,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#757575',
     marginBottom: 32,
+    lineHeight: 22,
   },
   userTypeCard: {
     borderRadius: 12,
@@ -289,12 +330,23 @@ const styles = StyleSheet.create({
   userTypeDescription: {
     fontSize: 14,
     color: '#757575',
+    lineHeight: 20,
+  },
+  continueButton: {
+    marginTop: 16,
+    marginBottom: 24,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  continueButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   footnote: {
     fontSize: 14,
     color: '#9E9E9E',
     textAlign: 'center',
-    marginTop: 32,
+    marginTop: 16,
   }
 });
 

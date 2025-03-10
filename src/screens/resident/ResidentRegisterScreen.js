@@ -8,7 +8,10 @@ import {
   Alert,
   Animated,
   Dimensions,
-  Keyboard
+  Keyboard,
+  StatusBar,
+  Platform,
+  SafeAreaView
 } from 'react-native';
 import { 
   Text, 
@@ -19,7 +22,8 @@ import {
   ProgressBar,
   Surface,
   IconButton,
-  Chip
+  Chip,
+  Divider
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -47,8 +51,7 @@ const { width } = Dimensions.get('window');
 const ResidentRegisterScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
-  const { currentUser, userProfile, updateProfile,setUserProfile } = useAuth();
-  
+  const { currentUser, userProfile, updateProfile, setUserProfile, cancelRegistration } = useAuth();  
   // Refs
   const scrollViewRef = useRef(null);
   
@@ -98,7 +101,7 @@ const ResidentRegisterScreen = () => {
   // Efeito para monitorar teclado
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       () => {
         setKeyboardVisible(true);
         Animated.parallel([
@@ -117,7 +120,7 @@ const ResidentRegisterScreen = () => {
     );
     
     const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
         Animated.parallel([
@@ -204,12 +207,12 @@ const ResidentRegisterScreen = () => {
         isValid = false;
       }
       
-      if (!residentData.cpf || residentData.cpf.replace(/\D/g, '').length !== 11) {
+      if (!residentData.cpf || residentData.cpf.replace(/\\D/g, '').length !== 11) {
         stepErrors.cpf = 'CPF inválido';
         isValid = false;
       }
       
-      if (!residentData.phone || residentData.phone.replace(/\D/g, '').length < 10) {
+      if (!residentData.phone || residentData.phone.replace(/\\D/g, '').length < 10) {
         stepErrors.phone = 'Telefone inválido';
         isValid = false;
       }
@@ -282,13 +285,7 @@ const ResidentRegisterScreen = () => {
         });
         
         // Rolar para o topo
-        if (scrollViewRef.current && scrollViewRef.current.scrollToPosition) {
-          scrollViewRef.current.scrollToPosition(0, 0);
-        } else if (scrollViewRef.current && scrollViewRef.current.scrollTo) {
-          scrollViewRef.current.scrollTo({ y: 0, animated: true });
-        } else {
-          console.log('Método de rolagem não disponível');
-        }
+        scrollToTop();
       } else {
         submitForm();
       }
@@ -299,7 +296,84 @@ const ResidentRegisterScreen = () => {
     }
   };
   
-  // Voltar para etapa anterior
+  // Função auxiliar para rolar para o topo
+  const scrollToTop = () => {
+    if (scrollViewRef.current) {
+      if (scrollViewRef.current.scrollToPosition) {
+        scrollViewRef.current.scrollToPosition(0, 0);
+      } else if (scrollViewRef.current.scrollTo) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: true });
+      }
+    }
+  };
+  
+// Atualizar apenas a função handleCancel em src/screens/resident/ResidentRegisterScreen.js
+
+// Função simplificada para cancelar o cadastro e sair
+const handleCancel = () => {
+  Alert.alert(
+    "Cancelar Cadastro",
+    "Tem certeza que deseja cancelar o cadastro? Esta ação não pode ser desfeita.",
+    [
+      {
+        text: "Não",
+        style: "cancel"
+      },
+      {
+        text: "Sim, cancelar",
+        onPress: async () => {
+          setLoading(true);
+          try {
+            // Alternativa mais simples que não depende de autenticação recente
+            if (currentUser) {
+              // 1. Tentar excluir documentos do Firestore
+              const userType = 'resident'; // ou 'driver' ou 'condo' dependendo da tela
+              
+              // Excluir documento específico do tipo
+              try {
+                await FirestoreService.deleteDocument(userType + 's', currentUser.uid);
+              } catch (e) {
+                console.log('Erro ao excluir documento específico:', e);
+              }
+              
+              // Excluir documento de usuário
+              try {
+                await FirestoreService.deleteDocument('users', currentUser.uid);
+              } catch (e) {
+                console.log('Erro ao excluir documento de usuário:', e);
+              }
+              
+              // 2. Fazer logout
+              await logout();
+            }
+            
+            // 3. Voltar para tela inicial
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }]
+            });
+          } catch (error) {
+            console.error("Erro ao cancelar cadastro:", error);
+            setError("Erro ao cancelar cadastro. Tente novamente.");
+            setShowError(true);
+            
+            // Mesmo com erro, tentar voltar para o login
+            try {
+              await logout();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }]
+              });
+            } catch (e) {
+              setLoading(false);
+            }
+          }
+        }
+      }
+    ]
+  );
+};
+  // Voltar para etapa anterior ou cancelar
   const prevStep = () => {
     if (step > 1) {
       // Animar transição
@@ -329,97 +403,87 @@ const ResidentRegisterScreen = () => {
       });
       
       // Rolar para o topo
-      if (scrollViewRef.current && scrollViewRef.current.scrollToPosition) {
-        scrollViewRef.current.scrollToPosition(0, 0);
-      } else if (scrollViewRef.current && scrollViewRef.current.scrollTo) {
-        scrollViewRef.current.scrollTo({ y: 0, animated: true });
-      } else {
-        console.log('Método de rolagem não disponível');
-      }
+      scrollToTop();
     } else {
-      navigation.goBack();
+      // Se estiver na primeira etapa, mostrar diálogo de confirmação
+      handleCancel();
     }
   };
   
   // Enviar formulário
- // Para a tela ResidentRegisterScreen.js
-const submitForm = async () => {
-  try {
-    setLoading(true);
-    
-    if (!currentUser) {
-      throw new Error('Usuário não autenticado');
+  const submitForm = async () => {
+    try {
+      setLoading(true);
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // Preparar dados para envio
+      const residentProfileData = {
+        personalData: {
+          name: residentData.name,
+          cpf: residentData.cpf.replace(/\\D/g, ''),
+          phone: residentData.phone.replace(/\\D/g, ''),
+          email: residentData.email
+        },
+        residenceData: {
+          condoId: residentData.condoId,
+          condoName: residentData.condoName,
+          block: residentData.block,
+          unit: residentData.unit
+        },
+        documents: residentData.documents,
+        notificationPreferences: residentData.notificationPreferences,
+        status: 'pending_verification',
+        verificationStatus: 'pending',
+        profileComplete: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Atualizar documento do morador no Firestore
+      await FirestoreService.updateDocument('residents', currentUser.uid, residentProfileData);
+      
+      // Atualizar perfil geral
+      await updateProfile({
+        displayName: residentData.name,
+        profileComplete: true,
+        status: 'pending_verification'
+      });
+      
+      // Forçar uma atualização no perfil do usuário
+      const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
+      setUserProfile({
+        ...userProfile,
+        ...userDoc,
+        profileComplete: true,
+        status: 'pending_verification'
+      });
+      
+      // Mostrar mensagem de sucesso
+      Alert.alert(
+        'Cadastro Enviado',
+        'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação do seu condomínio.',
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Recarregar a aplicação/navegação
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Main' }],
+            });
+          } 
+        }]
+      );
+    } catch (error) {
+      console.error('Erro ao enviar formulário:', error);
+      setError('Erro ao salvar seus dados. Tente novamente.');
+      setShowError(true);
+    } finally {
+      setLoading(false);
     }
-    
-    // Preparar dados para envio
-    const residentProfileData = {
-      personalData: {
-        name: residentData.name,
-        cpf: residentData.cpf.replace(/\D/g, ''),
-        phone: residentData.phone.replace(/\D/g, ''),
-        email: residentData.email
-      },
-      residenceData: {
-        condoId: residentData.condoId,
-        condoName: residentData.condoName,
-        block: residentData.block,
-        unit: residentData.unit
-      },
-      documents: residentData.documents,
-      notificationPreferences: residentData.notificationPreferences,
-      status: 'pending_verification',
-      verificationStatus: 'pending',
-      profileComplete: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    // Atualizar documento do morador no Firestore
-    await FirestoreService.updateDocument('residents', currentUser.uid, residentProfileData);
-    
-    
-    // Atualizar perfil geral
-    await updateProfile({
-      displayName: residentData.name,
-      profileComplete: true,
-      status: 'pending_verification'
-    });
-    console.log('Perfil atualizado com sucesso?', updateProfile);
-
-     // Forçar uma atualização no perfil do usuário
-    // Este é um hack para garantir que a navegação reconheça a mudança
-    const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
-    setUserProfile({
-      ...userProfile,
-      ...userDoc,
-      profileComplete: true,
-      status: 'pending_verification'
-    });
-    
-    // Mostrar mensagem de sucesso  
-    Alert.alert(
-      'Cadastro Enviado',
-      'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação do seu condomínio.',
-      [{ 
-        text: 'OK', 
-        onPress: () => {
-          // Você pode implementar alguma lógica de recarregamento de aplicativo aqui
-          // Por exemplo, usando React Navigation para resetar a navegação
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Main' }], // Nome da sua rota principal que avalia o estado de login
-          });
-        } 
-      }]
-    );
-  } catch (error) {
-    console.error('Erro ao enviar formulário:', error);
-    setError('Erro ao salvar seus dados. Tente novamente.');
-    setShowError(true);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
   
   // Obter título da etapa atual
   const getStepTitle = () => {
@@ -718,69 +782,74 @@ const submitForm = async () => {
   };
   
   return (
-    <KeyboardAwareScrollView
-      ref={scrollViewRef}
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Cabeçalho com progresso */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={prevStep}
-          style={styles.backButton}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#000000" />
-        </TouchableOpacity>
-        
-        <View style={styles.progressContainer}>
-          <ProgressBar
-            progress={step / 3}
-            color={theme.colors.primary}
-            style={styles.progressBar}
-          />
-          <Text style={styles.progressText}>
-            Etapa {step} de 3: {getStepTitle()}
-          </Text>
-        </View>
-      </View>
-      
-      {/* Conteúdo do formulário */}
-      <Animated.View
-        style={[
-          styles.formContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: translateYAnim }]
-          }
-        ]}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
+      <KeyboardAwareScrollView
+        ref={scrollViewRef}
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        showsVerticalScrollIndicator={false}
       >
-        {renderStepContent()}
-      </Animated.View>
-      
-      {/* Botões de navegação */}
-      <View style={styles.buttonContainer}>
-        <Button
-          mode="outlined"
-          onPress={prevStep}
-          style={styles.backButtonBottom}
-          labelStyle={styles.backButtonLabel}
-          disabled={loading}
-        >
-          {step === 1 ? 'Cancelar' : 'Voltar'}
-        </Button>
+        {/* Cabeçalho com progresso */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={prevStep}
+            style={styles.backButton}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#000000" />
+          </TouchableOpacity>
+          
+          <View style={styles.progressContainer}>
+            <ProgressBar
+              progress={step / 3}
+              color={theme.colors.primary}
+              style={styles.progressBar}
+            />
+            <Text style={styles.progressText}>
+              Etapa {step} de 3: {getStepTitle()}
+            </Text>
+          </View>
+        </View>
         
-        <Button
-          mode="contained"
-          onPress={nextStep}
-          style={styles.nextButton}
-          labelStyle={styles.nextButtonLabel}
-          loading={loading}
-          disabled={loading}
+        {/* Conteúdo do formulário */}
+        <Animated.View
+          style={[
+            styles.formContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: translateYAnim }]
+            }
+          ]}
         >
-          {step === 3 ? 'Finalizar' : 'Próximo'}
-        </Button>
-      </View>
+          {renderStepContent()}
+        </Animated.View>
+        
+        {/* Botões de navegação */}
+        <View style={styles.buttonContainer}>
+          <Button
+            mode="outlined"
+            onPress={prevStep}
+            style={styles.backButtonBottom}
+            labelStyle={styles.backButtonLabel}
+            disabled={loading}
+          >
+            {step === 1 ? 'Cancelar' : 'Voltar'}
+          </Button>
+          
+          <Button
+            mode="contained"
+            onPress={nextStep}
+            style={styles.nextButton}
+            labelStyle={styles.nextButtonLabel}
+            loading={loading}
+            disabled={loading}
+          >
+            {step === 3 ? 'Finalizar' : 'Próximo'}
+          </Button>
+        </View>
+      </KeyboardAwareScrollView>
       
       {/* Snackbar para mensagens de erro */}
       <Snackbar
@@ -794,11 +863,15 @@ const submitForm = async () => {
       
       {/* Overlay de carregamento */}
       <LoadingOverlay visible={loading} />
-    </KeyboardAwareScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
