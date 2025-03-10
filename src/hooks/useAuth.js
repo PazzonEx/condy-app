@@ -285,6 +285,8 @@ const loadUserTypeSpecificData = async (userType, userId) => {
   };
 
 // Em src/hooks/useAuth.js
+// Em src/hooks/useAuth.js
+
 const register = async (email, password, displayName, userType) => {
   setError(null);
   try {
@@ -308,11 +310,12 @@ const register = async (email, password, displayName, userType) => {
     
     // Dados de usuário com tipo garantido
     const userData = {
+      id: user.uid,
       email,
       displayName,
-      type: validUserType, // Usando o tipo validado
+      type: validUserType,
       status: validUserType === 'admin' ? 'active' : 'pending_verification',
-      profileComplete: false,
+      profileComplete: false, // Explicitamente setar como falso
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       lastActive: serverTimestamp()
@@ -327,13 +330,14 @@ const register = async (email, password, displayName, userType) => {
     await createUserTypeSpecificDocument(validUserType, user.uid, { 
       email, 
       name: displayName,
-      status: validUserType === 'admin' ? 'active' : 'pending_verification'
+      status: validUserType === 'admin' ? 'active' : 'pending_verification',
+      profileComplete: false // Adicionar esse campo
     });
     
     // Atualizar perfil localmente para refletir as alterações
     setUserProfile({
-      id: user.uid,
-      ...userData
+      ...userData,
+      profileComplete: false
     });
     
     return user;

@@ -31,7 +31,7 @@ import LoadingOverlay from '../components/LoadingOverlay';
 const Stack = createStackNavigator();
 
 const AuthNavigator = () => {
-  const theme = useTheme();
+
 
   return (
     <Stack.Navigator
@@ -71,7 +71,7 @@ const AuthNavigator = () => {
 
 const RootNavigator = () => {
   const { currentUser, userProfile, loading, reloadUserProfile } = useAuth();
-
+  const theme = useTheme();
   // Função para verificar se o usuário precisa completar o cadastro
   const needsProfileCompletion = () => {
     // Se não tiver perfil, não precisa completar o cadastro
@@ -142,7 +142,15 @@ const RootNavigator = () => {
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{
+      headerStyle: {
+        backgroundColor: theme.colors.primary,
+      },
+      headerTintColor: 'white',
+      headerTitleStyle: {
+        fontWeight: 'bold',
+      },
+    }}>
       {!currentUser ? (
         // Não autenticado
         <Stack.Screen name="Auth" component={AuthNavigator} />
@@ -152,13 +160,13 @@ const RootNavigator = () => {
           console.log('Redirecionando para completar perfil:', userProfile?.type);
           switch (userProfile?.type) {
             case 'resident':
-              return <Stack.Screen name="ResidentRegister" component={ResidentRegisterScreen} />;
+              return <Stack.Screen name="ResidentRegister" component={ResidentRegisterScreen} options={{ title: 'Cadastrar' }}/>;
             case 'driver':
-              return <Stack.Screen name="DriverRegister" component={DriverRegisterScreen} />;
+              return <Stack.Screen name="DriverRegister" component={DriverRegisterScreen} options={{ title: 'Cadastrar' }} />;
             case 'condo':
-              return <Stack.Screen name="CondoRegister" component={CondoRegisterScreen} />;
+              return <Stack.Screen name="CondoRegister" component={CondoRegisterScreen} options={{ title: 'Cadastrar' }} />;
             default:
-              return <Stack.Screen name="Auth" component={AuthNavigator} />;
+              return <Stack.Screen name="Auth" component={AuthNavigator} options={{ title: 'Cadastrar' }} />;
           }
         })()
       ) : needsApproval() ? (
