@@ -110,7 +110,21 @@ const DriverRegisterScreen = () => {
       vehiclePhoto: []
     }
   });
-  
+  // Obter título da etapa atual
+const getStepTitle = () => {
+  switch (step) {
+    case 1:
+      return 'Dados Pessoais';
+    case 2:
+      return 'Dados de Habilitação';
+    case 3:
+      return 'Dados do Veículo';
+    case 4:
+      return 'Documentação e Preferências';
+    default:
+      return '';
+  }
+};
   // Erros de validação
   const [errors, setErrors] = useState({});
   

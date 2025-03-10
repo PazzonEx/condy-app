@@ -31,6 +31,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import { useNavigation, CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
@@ -267,7 +268,6 @@ const RegisterScreen = ({ route }) => {
     );
   };
   
-  // Realizar o cadastro
   const handleRegister = async () => {
     try {
       if (!validateUserPassword()) return;
@@ -276,37 +276,22 @@ const RegisterScreen = ({ route }) => {
       setLoading(true);
       setShowError(false);
       
-      console.log("Tentando registrar usuário do tipo:", userType);
+      // Log para debugging
+      console.log("Tentando registrar com tipo:", userType);
       
-      const user = await register(email, password, name, userType);
+      // Garantir que userType nunca seja undefined
+      const typeToUse = userType || 'resident';
+      
+      // Armazenar no AsyncStorage também como backup
+      await AsyncStorage.setItem('@user_type', typeToUse);
+      
+      // Passar explicitamente o tipo de usuário para a função register
+      const user = await register(email, password, name, typeToUse);
       console.log("Registro bem-sucedido, navegando...");
       
-      // Exibir mensagem de sucesso antes de continuar
-      Alert.alert(
-        "Cadastro realizado com sucesso",
-        "Agora complete seu perfil para usar o aplicativo.",
-        [{ text: "OK" }]
-      );
-      
-      // A navegação será gerenciada automaticamente pelo sistema
+      // Resto do código...
     } catch (error) {
-      console.error("Erro durante o registro:", error);
-      let errorMsg = 'Falha ao criar conta. Tente novamente.';
-      
-      if (error.code === 'auth/email-already-in-use') {
-        errorMsg = 'Este email já está sendo usado por outra conta';
-      } else if (error.code === 'auth/weak-password') {
-        errorMsg = 'Senha muito fraca. Use uma senha mais forte.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMsg = 'Endereço de email inválido';
-      } else if (error.code === 'auth/network-request-failed') {
-        errorMsg = 'Erro de conexão. Verifique sua internet.';
-      }
-      
-      setError(errorMsg);
-      setShowError(true);
-    } finally {
-      setLoading(false);
+      // Tratamento de erro...
     }
   };
   

@@ -168,6 +168,8 @@ const RootNavigator = () => {
         // Aprovado - Redirecionar para tela principal
         (() => {
           console.log('Redirecionando para tela principal:', userProfile?.type);
+          console.log('Perfil completo:', JSON.stringify(userProfile));
+          
           switch (userProfile?.type) {
             case 'resident':
               return <Stack.Screen name="Resident" component={ResidentNavigator} />;
@@ -178,6 +180,7 @@ const RootNavigator = () => {
             case 'admin':
               return <Stack.Screen name="Admin" component={AdminNavigator} />;
             default:
+              console.error('Tipo de usuário indefinido ou inválido:', userProfile?.type);
               return <Stack.Screen name="Auth" component={AuthNavigator} />;
           }
         })()

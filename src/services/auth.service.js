@@ -15,30 +15,62 @@ import FirestoreService from "./firestore.service"
 // Serviço de autenticação
 const AuthService = {
   // Registrar um novo usuário
-  async register(email, password, displayName, userType) {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // Atualizar o perfil do usuário com o nome
-      if (displayName) {
-        await updateProfile(userCredential.user, { displayName });
-      }
-      
-      // Importante: criar documento com tipo de usuário correto
-      await FirestoreService.createDocumentWithId('users', userCredential.user.uid, {
-        email,
-        displayName,
-        type: userType || 'resident', // Default é residente
-        status: 'active',
-        createdAt: new Date()
-      });
-      
-      return userCredential.user;
-    } catch (error) {
-      console.error('Erro ao registrar usuário:', error);
-      throw error;
+  // Modifique a função register em src/services/auth.service.js
+async register(email, password, displayName, userType) {
+  try {
+    console.log(`AuthService.register chamado com: email=${email}, displayName=${displayName}, userType=${userType}`);
+
+    // Registrar usuário no Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    // Verificar se o user existe antes de prosseguir
+    if (!user) {
+      throw new Error('Falha na criação do usuário');
     }
-  },
+    
+    // Garantir que temos um tipo de usuário válido
+    if (!userType || !['resident', 'driver', 'condo', 'admin'].includes(userType)) {
+      console.warn(`Tipo de usuário inválido ou não especificado: ${userType}, usando 'resident' como padrão`);
+      userType = 'resident';
+    }
+    if (!userCredential || !userCredential.user) {
+      console.error("Falha na criação do usuário - objeto userCredential:", userCredential);
+      throw new Error('Falha ao criar usuário no Firebase Auth');
+    }
+    
+    // Atualizar o perfil com nome de exibição
+    if (displayName) {
+      await updateProfile(user, { displayName });
+    }
+    
+    // Criar documento de usuário com o tipo correto
+    await FirestoreService.createDocumentWithId('users', user.uid, {
+      email,
+      displayName,
+      type: userType, // Garantir que estamos usando o tipo correto
+      status: 'pending_verification',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    
+    // Criar documento específico na coleção correta
+    const specificCollectionName = userType + 's'; // driver -> drivers, condo -> condos, etc.
+    await FirestoreService.createDocumentWithId(specificCollectionName, user.uid, {
+      email,
+      name: displayName,
+      status: 'pending_verification',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    
+    console.log(`Usuário registrado com sucesso. Tipo: ${userType}, ID: ${user.uid}`);
+    return user;
+  } catch (error) {
+    console.error('Erro detalhado ao registrar usuário:', error);
+    throw error;
+  }
+},
 
   // Login de usuário
   async login(email, password) {

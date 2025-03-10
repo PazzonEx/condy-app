@@ -307,6 +307,7 @@ const ResidentRegisterScreen = () => {
     }
   };
   
+  
 // Atualizar apenas a função handleCancel em src/screens/resident/ResidentRegisterScreen.js
 
 // Função simplificada para cancelar o cadastro e sair

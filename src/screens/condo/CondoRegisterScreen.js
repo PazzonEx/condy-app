@@ -144,6 +144,23 @@ const handleCancel = () => {
     ]
   );
 };
+// Obter título da etapa atual
+const getStepTitle = () => {
+  switch (step) {
+    case 1:
+      return 'Informações Básicas';
+    case 2:
+      return 'Endereço';
+    case 3:
+      return 'Dados Administrativos';
+    case 4:
+      return 'Plano de Assinatura';
+    case 5:
+      return 'Documentação';
+    default:
+      return '';
+  }
+};
   // Voltar para etapa anterior
   const prevStep = () => {
     if (step > 1) {

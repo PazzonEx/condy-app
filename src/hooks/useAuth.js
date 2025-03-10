@@ -70,67 +70,107 @@ export function AuthProvider({ children }) {
     // Cleanup da subscription
     return unsubscribe;
   }, []);
-
-  // Carregar dados específicos do tipo de usuário
-  const loadUserTypeSpecificData = async (userType, userId) => {
-    try {
-      if (!userType || !userId) return;
+// No hook useAuth.js, modifique a função loadUserTypeSpecificData
+const loadUserTypeSpecificData = async (userType, userId) => {
+  try {
+    if (!userType || !userId) {
+      console.error('Tipo de usuário ou ID não fornecidos');
+      return;
+    }
+    
+    console.log(`Carregando dados específicos para usuário tipo: ${userType}, ID: ${userId}`);
+    
+    let collectionName = '';
+    
+    // Determinar a coleção correta com base no tipo
+    switch (userType) {
+      case 'driver':
+        collectionName = 'drivers';
+        break;
+      case 'resident':
+        collectionName = 'residents';
+        break;
+      case 'condo':
+        collectionName = 'condos';
+        break;
+      case 'admin':
+        collectionName = 'admins';
+        break;
+      default:
+        console.error(`Tipo de usuário desconhecido: ${userType}`);
+        return;
+    }
+    
+    // Verificar se o documento existe
+    let typeSpecificData = await FirestoreService.getDocument(collectionName, userId);
+    
+    // Se não existir, tentar restaurar o documento correto
+    if (!typeSpecificData) {
+      console.log(`Documento não encontrado em ${collectionName} para ID ${userId}`);
       
-      let typeSpecificData = null;
-      let collectionName = ''; 
+      // Verificar o tipo real no documento do usuário
+      const userDoc = await FirestoreService.getDocument('users', userId);
+      const actualUserType = userDoc?.type || userType;
       
-      switch (userType) {
-        case 'driver':
-          collectionName = 'drivers';
-          break;
-        case 'resident':
-          collectionName = 'residents';
-          break;
-        case 'condo':
-          collectionName = 'condos';
-          break;
-        case 'admin':
-          collectionName = 'admins';
-          break;
-        default:
-          return;
+      if (actualUserType !== userType) {
+        console.log(`Corrigindo tipo de usuário: ${userType} -> ${actualUserType}`);
+        
+        // Determinar a coleção correta novamente
+        let actualCollectionName = '';
+        switch (actualUserType) {
+          case 'driver':
+            actualCollectionName = 'drivers';
+            break;
+          case 'resident':
+            actualCollectionName = 'residents';
+            break;
+          case 'condo':
+            actualCollectionName = 'condos';
+            break;
+          case 'admin':
+            actualCollectionName = 'admins';
+            break;
+          default:
+            console.error(`Tipo de usuário desconhecido: ${actualUserType}`);
+            return;
+        }
+        
+        // Verificar na coleção correta
+        typeSpecificData = await FirestoreService.getDocument(actualCollectionName, userId);
       }
       
-      // Verificar se o documento existe
-      typeSpecificData = await FirestoreService.getDocument(collectionName, userId);
-      
-      // Se não existir, criar um documento básico
-      if (!typeSpecificData && collectionName) {
+      // Se ainda não existir, criar na coleção correta
+      if (!typeSpecificData) {
         console.log(`Criando documento básico em ${collectionName} para usuário ${userId}`);
         
-        const userData = await FirestoreService.getDocument('users', userId);
-        
         // Dados básicos para o documento
+        const userData = await FirestoreService.getDocument('users', userId);
         const basicData = {
           name: userData?.displayName || '',
           email: userData?.email || '',
           status: 'pending_verification',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          profileComplete: false
+          profileComplete: false,
+          type: userType
         };
         
-        // Criar o documento
+        // Criar o documento na coleção correta
         await FirestoreService.createDocumentWithId(collectionName, userId, basicData);
         
         // Buscar o documento recém-criado
         typeSpecificData = await FirestoreService.getDocument(collectionName, userId);
       }
-      
-      if (typeSpecificData) {
-        // Atualizar perfil com dados específicos
-        setUserProfile(prev => ({ ...prev, ...typeSpecificData }));
-      }
-    } catch (error) {
-      console.error(`Erro ao carregar dados específicos de ${userType}:`, error);
     }
-  };
-  
+    
+    if (typeSpecificData) {
+      // Atualizar perfil com dados específicos
+      setUserProfile(prev => ({ ...prev, ...typeSpecificData }));
+    }
+  } catch (error) {
+    console.error(`Erro ao carregar dados específicos de ${userType}:`, error);
+  }
+};
   // Registrar token de notificação
   const registerNotificationToken = async (userId) => {
     try {
@@ -244,120 +284,139 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Registrar usuário
-  const register = async (email, password, displayName, userType) => {
-    setError(null);
-    try {
-      console.log("Registrando usuário do tipo:", userType); 
-      
-      // Registrar com Firebase Auth
-      const userCredential = await AuthService.register(email, password, displayName);
-      const user = userCredential.user;
-      
-      // Definir status com base no tipo de usuário
-      let initialStatus = 'pending_verification';
-      if (userType === 'admin') {
-        initialStatus = 'active'; // Admins são ativados imediatamente
-      }
-      
-      // Dados de usuário
-      const userData = {
-        email,
-        displayName,
-        type: userType,
-        status: initialStatus,
-        profileComplete: false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastActive: serverTimestamp()
-      };
-      
-      console.log("Salvando dados do usuário:", userData);
-      
-      // Criar documento do usuário no Firestore
-      await FirestoreService.createDocumentWithId('users', user.uid, userData);
-      
-      // Criar documento específico baseado no tipo de usuário
-      await createUserTypeSpecificDocument(userType, user.uid, { 
-        email, 
-        name: displayName,
-        status: initialStatus
-      });
-      
-      // Atualizar perfil localmente para refletir as alterações
-      setUserProfile({
-        id: user.uid,
-        ...userData
-      });
-      
-      return user;
-    } catch (err) {
-      setError(err.message);
-      throw err;
+// Em src/hooks/useAuth.js
+const register = async (email, password, displayName, userType) => {
+  setError(null);
+  try {
+    // Log para debugar a passagem de parâmetros
+    console.log(`Register chamado com parâmetros: email=${email}, displayName=${displayName}, userType=${userType}`);
+    
+    // Garantir que o userType seja um valor válido
+    const validUserType = userType && ['resident', 'driver', 'condo', 'admin'].includes(userType) 
+      ? userType 
+      : 'resident';
+    
+    console.log(`Tipo de usuário validado: ${validUserType}`);
+    
+    // Registrar com Firebase Auth
+    const userCredential = await AuthService.register(email, password, displayName, validUserType);
+    const user = userCredential.user;
+    
+    if (!user) {
+      throw new Error('Falha ao criar usuário (retorno nulo)');
     }
-  };
-
-  // Criar documento específico baseado no tipo de usuário
-  const createUserTypeSpecificDocument = async (userType, userId, basicData) => {
+    
+    // Dados de usuário com tipo garantido
+    const userData = {
+      email,
+      displayName,
+      type: validUserType, // Usando o tipo validado
+      status: validUserType === 'admin' ? 'active' : 'pending_verification',
+      profileComplete: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      lastActive: serverTimestamp()
+    };
+    
+    console.log("Salvando dados do usuário:", userData);
+    
+    // Criar documento do usuário no Firestore
+    await FirestoreService.createDocumentWithId('users', user.uid, userData);
+    
+    // Criar documento específico baseado no tipo de usuário
+    await createUserTypeSpecificDocument(validUserType, user.uid, { 
+      email, 
+      name: displayName,
+      status: validUserType === 'admin' ? 'active' : 'pending_verification'
+    });
+    
+    // Atualizar perfil localmente para refletir as alterações
+    setUserProfile({
+      id: user.uid,
+      ...userData
+    });
+    
+    return user;
+  } catch (err) {
+    console.error("Erro completo durante o registro:", err);
+    setError(err.message);
+    throw err;
+  }
+};
+// Em src/hooks/useAuth.js
+const createUserTypeSpecificDocument = async (userType, userId, basicData) => {
+  try {
+    // Log para debug
+    console.log(`Criando documento específico para: tipo=${userType}, userId=${userId}`);
+    
+    const timestamp = serverTimestamp();
+    let collectionName = '';
+    let extraData = {};
+    
+    switch (userType) {
+      case 'driver':
+        collectionName = 'drivers';
+        extraData = {
+          status: 'pending_verification',
+          isAvailable: true,
+          verificationStatus: 'pending'
+        };
+        break;
+      case 'resident':
+        collectionName = 'residents';
+        extraData = {
+          status: 'active'
+        };
+        break;
+      case 'condo':
+        collectionName = 'condos';
+        extraData = {
+          status: 'pending_verification',
+          plan: 'free'
+        };
+        break;
+      case 'admin':
+        collectionName = 'admins';
+        extraData = {
+          role: 'admin',
+          permissions: ['read', 'write']
+        };
+        break;
+      default:
+        console.error(`ERRO CRÍTICO: Tipo inválido (${userType}) ao criar documento específico`);
+        collectionName = 'residents'; // Fallback para evitar erro
+    }
+    
+    console.log(`Coletando que será usada: ${collectionName}`);
+    
+    // Dados comuns
+    const commonData = {
+      ...basicData,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      // Importante: sempre incluir o tipo no documento
+      type: userType
+    };
+    
+    // Dados completos
+    const documentData = {
+      ...commonData,
+      ...extraData
+    };
+    
+    // Verificar se o usuário existe para evitar erros
     try {
-      const timestamp = serverTimestamp();
-      let collectionName = '';
-      let extraData = {};
-      
-      switch (userType) {
-        case 'driver':
-          collectionName = 'drivers';
-          extraData = {
-            status: 'pending_verification',
-            isAvailable: true,
-            verificationStatus: 'pending'
-          };
-          break;
-        case 'resident':
-          collectionName = 'residents';
-          extraData = {
-            status: 'active'
-          };
-          break;
-        case 'condo':
-          collectionName = 'condos';
-          extraData = {
-            status: 'pending_verification',
-            plan: 'free'
-          };
-          break;
-        case 'admin':
-          collectionName = 'admins';
-          extraData = {
-            role: 'admin',
-            permissions: ['read', 'write']
-          };
-          break;
-        default:
-          return; // Tipo inválido, não criar documento
-      }
-      
-      // Dados comuns
-      const commonData = {
-        ...basicData,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-      
-      // Dados completos
-      const documentData = {
-        ...commonData,
-        ...extraData
-      };
-      
-      // Criar documento
       await FirestoreService.createDocumentWithId(collectionName, userId, documentData);
-    } catch (error) {
-      console.error(`Erro ao criar documento específico para ${userType}:`, error);
-      throw error;
+      console.log(`Documento criado com sucesso em ${collectionName} para usuário ${userId}`);
+    } catch (docError) {
+      console.error(`Erro ao criar documento em ${collectionName}:`, docError);
+      throw docError;
     }
-  };
-
+  } catch (error) {
+    console.error(`Erro ao criar documento específico para ${userType}:`, error);
+    throw error;
+  }
+};
   // Login de usuário
   const login = async (email, password) => {
     setError(null);

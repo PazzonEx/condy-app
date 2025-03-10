@@ -19,6 +19,7 @@ import {
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Constantes
 const { width, height } = Dimensions.get('window');
@@ -56,7 +57,11 @@ const UserTypeScreen = ({ navigation }) => {
   
   // Selecionar tipo de usuário
   const handleSelectType = (type) => {
+    console.log(`Tipo de usuário selecionado: ${type}`);
     setSelectedType(type);
+
+      // Armazenar o tipo selecionado também no AsyncStorage como backup
+  AsyncStorage.setItem('@user_type', type);
     
     // Animar card selecionado
     const animations = cardScales.map((scale, index) => {
