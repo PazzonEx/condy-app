@@ -2,8 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
-  StyleSheet, 
-  ScrollView, 
+  StyleSheet,
   TouchableOpacity, 
   Alert,
   Animated,
@@ -28,13 +27,11 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import * as Animatable from 'react-native-animatable';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
 
 // Componentes
-import AddressAutocomplete from '../../components/AddressAutocomplete';
 import DocumentUpload from '../../components/DocumentUpload';
 import GooglePlacesCondoSearch from '../../components/GooglePlacesCondoSearch';
 import LoadingOverlay from '../../components/LoadingOverlay';
@@ -44,7 +41,7 @@ import FirestoreService from '../../services/firestore.service';
 
 // Utilitários
 import { maskCPF, maskPhone } from '../../utils/masks';
-import { isValidEmail } from '../../utils/validation';
+import { isValidEmail,isValidCPF } from '../../utils/validation';
 
 const { width } = Dimensions.get('window');
 
@@ -206,13 +203,20 @@ const ResidentRegisterScreen = () => {
         stepErrors.name = 'Nome é obrigatório';
         isValid = false;
       }
+      const cleanCPF = residentData.cpf.replace(/\D/g, '');
+    console.log("CPF limpo para validação:", cleanCPF); // Log para debug
+    
+    if (!isValidCPF(cleanCPF)) {
+      stepErrors.cpf = 'CPF inválido';
+      isValid = false;
+    }
       
-      if (!residentData.cpf || residentData.cpf.replace(/\\D/g, '').length !== 11) {
+      if (!residentData.cpf || residentData.cpf.replace(/\D/g, '').length !== 11) {
         stepErrors.cpf = 'CPF inválido';
         isValid = false;
       }
       
-      if (!residentData.phone || residentData.phone.replace(/\\D/g, '').length < 10) {
+      if (!residentData.phone || residentData.phone.replace(/\D/g, '').length < 10) {
         stepErrors.phone = 'Telefone inválido';
         isValid = false;
       }
@@ -424,8 +428,8 @@ const handleCancel = () => {
       const residentProfileData = {
         personalData: {
           name: residentData.name,
-          cpf: residentData.cpf.replace(/\\D/g, ''),
-          phone: residentData.phone.replace(/\\D/g, ''),
+          cpf: residentData.cpf.replace(/\D/g, ''),
+          phone: residentData.phone.replace(/\D/g, ''),
           email: residentData.email
         },
         residenceData: {
@@ -468,13 +472,7 @@ const handleCancel = () => {
         'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação do seu condomínio.',
         [{ 
           text: 'OK', 
-          onPress: () => {
-            // Recarregar a aplicação/navegação
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Main' }],
-            });
-          } 
+         
         }]
       );
     } catch (error) {
@@ -524,7 +522,12 @@ const handleCancel = () => {
         <TextInput
           label="CPF *"
           value={residentData.cpf}
-          onChangeText={(text) => updateResidentData('cpf', maskCPF(text))}
+          onChangeText={(text) => {
+            const masked = maskCPF(text);
+            console.log("CPF antes da máscara:", text);
+            console.log("CPF após máscara:", masked);
+            updateResidentData('cpf', masked);
+          }}
           mode="outlined"
           error={!!errors.cpf}
           style={styles.input}
@@ -586,10 +589,12 @@ const handleCancel = () => {
       {/* Seletor de condomínio */}
       <Text style={styles.sectionTitle}>Selecione seu condomínio *</Text>
       <View style={styles.condoSearchContainer}>
+      
         <GooglePlacesCondoSearch
           onSelectCondo={handleSelectCondo}
           initialValue=""
           style={styles.condoSearch}
+          insideScrollView={true} 
         />
       </View>
       {errors.condoId && <Text style={styles.errorText}>{errors.condoId}</Text>}

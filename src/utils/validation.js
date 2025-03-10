@@ -92,19 +92,6 @@ export const isValidEmail = (email) => {
    * @param {string} phone - Telefone a ser validado
    * @returns {boolean} - true se o telefone for válido
    */
-  export const isValidPhone = (phone) => {
-    // Remover caracteres não numéricos
-    const cleanPhone = phone.replace(/\D/g, '');
-    
-    // Verificar se tem entre 10 e 11 dígitos (com ou sem DDD)
-    return cleanPhone.length >= 10 && cleanPhone.length <= 11;
-  };
-  
-  /**
-   * Valida um CPF
-   * @param {string} cpf - CPF a ser validado
-   * @returns {boolean} - true se o CPF for válido
-   */
   export const isValidCPF = (cpf) => {
     // Remover caracteres não numéricos
     cpf = cpf.replace(/\D/g, '');

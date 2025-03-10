@@ -174,20 +174,19 @@ const loadUserTypeSpecificData = async (userType, userId) => {
   // Registrar token de notificação
   const registerNotificationToken = async (userId) => {
     try {
-      // Obter token de notificação
       const token = await NotificationService.registerForPushNotificationsAsync();
       
       if (token) {
         setNotificationToken(token);
-        
-        // Salvar token no Firestore
         await NotificationService.saveTokenToFirestore(token);
+      } else {
+        console.log('Continuing without notification token');
       }
     } catch (error) {
-      console.error('Erro ao registrar token de notificação:', error);
+      console.error('Erro ao registrar token de notificação wrro do notificatio emprementar mais tarde:', error);
+      // Continuar sem o token
     }
   };
-  
   // Atualizar última atividade do usuário
   const updateLastActive = async (userId) => {
     try {
@@ -294,14 +293,14 @@ const register = async (email, password, displayName, userType) => {
     console.log(`Register chamado com parâmetros: email=${email}, displayName=${displayName}, userType=${userType}`);
     
     // Garantir que o userType seja um valor válido
-    const validUserType = userType && ['resident', 'driver', 'condo', 'admin'].includes(userType) 
-      ? userType 
-      : 'resident';
+    if (!userType || !['resident', 'driver', 'condo', 'admin'].includes(userType)) {
+      console.error(`Tipo de usuário inválido ou não especificado: ${userType}`);
+      throw new Error('Tipo de usuário inválido ou não especificado');
+    }
     
-    console.log(`Tipo de usuário validado: ${validUserType}`);
     
     // Registrar com Firebase Auth
-    const userCredential = await AuthService.register(email, password, displayName, validUserType);
+    const userCredential = await AuthService.register(email, password, displayName, userType);
     const user = userCredential.user;
     
     if (!user) {
@@ -313,8 +312,8 @@ const register = async (email, password, displayName, userType) => {
       id: user.uid,
       email,
       displayName,
-      type: validUserType,
-      status: validUserType === 'admin' ? 'active' : 'pending_verification',
+      type: userType,
+      status: userType === 'admin' ? 'active' : 'pending_verification',
       profileComplete: false, // Explicitamente setar como falso
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -327,10 +326,10 @@ const register = async (email, password, displayName, userType) => {
     await FirestoreService.createDocumentWithId('users', user.uid, userData);
     
     // Criar documento específico baseado no tipo de usuário
-    await createUserTypeSpecificDocument(validUserType, user.uid, { 
+    await createUserTypeSpecificDocument(userType, user.uid, { 
       email, 
       name: displayName,
-      status: validUserType === 'admin' ? 'active' : 'pending_verification',
+      status: userType === 'admin' ? 'active' : 'pending_verification',
       profileComplete: false // Adicionar esse campo
     });
     

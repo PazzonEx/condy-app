@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Text, Dimensions, Alert, Modal, Animated } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, FlatList,ScrollView, ActivityIndicator, Text, Dimensions, Alert, Modal, Animated } from 'react-native';
 import { TextInput, Chip, useTheme, Divider, IconButton, Surface } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -14,9 +14,9 @@ import { useAuth } from '../hooks/useAuth';
 
 // Constantes
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const DEBOUNCE_DELAY = 300;
+const DEBOUNCE_DELAY = 1000;
 
-const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) => {
+const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style, insideScrollView = true }) => {
   const theme = useTheme();
   const { userProfile } = useAuth();
   const inputRef = useRef(null);
@@ -149,7 +149,7 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
       // Parâmetros de busca avançada
       const searchParams = {
         query: query.trim(),
-        maxResults: 20,
+        maxResults: 3,
         onlyActive: true,
         userLocation,
         filterType: activeFilter,
@@ -343,83 +343,94 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
     </Modal>
   );
 
-  // Renderizar item de condomínio
-  const renderCondoItem = ({ item }) => (
-    <TouchableOpacity
-      style={[
-        styles.condoItem,
-        item.fromGoogle && !item.inSystem && styles.externalCondoItem
-      ]}
-      onPress={() => handleSelectCondoItem(item)}
-    >
-      <View style={[
-        styles.condoIconContainer,
-        item.verified && styles.verifiedCondoIcon,
-        item.inSystem && styles.inSystemCondoIcon,
-        item.isRecent && styles.recentCondoIcon,
-        item.fromGoogle && !item.inSystem && styles.externalCondoIcon
-      ]}>
+  // Renderizar item de condomínio com cores e indicações visuais
+  const renderCondoItem = ({ item, index }) => {
+    // Determinar cor do ícone baseado no status
+    let iconBackgroundColor = '#757575'; // Padrão cinza
+    
+    if (item.verified) {
+      iconBackgroundColor = '#4CAF50'; // Verde para verificado
+    } else if (item.inSystem) {
+      iconBackgroundColor = '#607D8B'; // Azul-cinza para no sistema
+    } else if (item.isRecent) {
+      iconBackgroundColor = '#9C27B0'; // Roxo para recente
+    } else if (item.fromGoogle && !item.inSystem) {
+      iconBackgroundColor = '#D32F2F'; // Vermelho para não disponível
+    }
+    
+    return (
+      <TouchableOpacity
+        key={item.id || index}
+        style={[
+          styles.condoItem,
+          item.fromGoogle && !item.inSystem && styles.externalCondoItem
+        ]}
+        onPress={() => handleSelectCondoItem(item)}
+      >
+        <View style={[
+          styles.condoIconContainer,
+          { backgroundColor: iconBackgroundColor }
+        ]}>
+          <MaterialCommunityIcons name="office-building" size={24} color="#fff" />
+        </View>
+        
+        <View style={styles.condoDetails}>
+          <View style={styles.condoNameContainer}>
+            <Text style={styles.condoName} numberOfLines={1}>
+              {item.name || 'Sem nome'}
+            </Text>
+            {item.verified && (
+              <MaterialCommunityIcons 
+                name="check-circle" 
+                size={16} 
+                color={theme.colors.primary} 
+                style={styles.verifiedIcon} 
+              />
+            )}
+          </View>
+          
+          <Text style={styles.condoAddress} numberOfLines={2}>
+            {item.address || 'Sem endereço'}
+          </Text>
+          
+          <View style={styles.condoBadgeContainer}>
+            {item.distance !== null && (
+              <View style={styles.distanceBadge}>
+                <MaterialCommunityIcons name="map-marker-distance" size={12} color="#1E88E5" />
+                <Text style={styles.distanceText}>
+                  {typeof item.distance === 'number' ? `${item.distance.toFixed(1)} km` : 'Distância desconhecida'}
+                </Text>
+              </View>
+            )}
+            
+            {item.inSystem && (
+              <View style={styles.inSystemBadge}>
+                <Text style={styles.inSystemBadgeText}>Disponível</Text>
+              </View>
+            )}
+            
+            {item.fromGoogle && !item.inSystem && (
+              <View style={styles.notAvailableBadge}>
+                <Text style={styles.notAvailableBadgeText}>Não disponível</Text>
+              </View>
+            )}
+            
+            {item.isRecent && (
+              <View style={styles.recentBadge}>
+                <Text style={styles.recentBadgeText}>Recente</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        
         <MaterialCommunityIcons 
-          name="office-building" 
+          name={item.fromGoogle && !item.inSystem ? "close-circle" : "chevron-right"} 
           size={24} 
-          color="#fff" 
+          color={item.fromGoogle && !item.inSystem ? "#D32F2F" : "#757575"} 
         />
-      </View>
-      
-      <View style={styles.condoDetails}>
-        <View style={styles.condoNameContainer}>
-          <Text style={styles.condoName} numberOfLines={1}>{item.name}</Text>
-          {item.verified && (
-            <MaterialCommunityIcons 
-              name="check-circle" 
-              size={16} 
-              color={theme.colors.primary} 
-              style={styles.verifiedIcon} 
-            />
-          )}
-        </View>
-        
-        <Text style={styles.condoAddress} numberOfLines={2}>
-          {item.address}
-        </Text>
-        
-        <View style={styles.condoBadgeContainer}>
-          {item.distance !== null && (
-            <View style={styles.distanceBadge}>
-              <MaterialCommunityIcons name="map-marker-distance" size={12} color="#1E88E5" />
-              <Text style={styles.distanceText}>
-                {typeof item.distance === 'number' ? `${item.distance.toFixed(1)} km` : 'Distância desconhecida'}
-              </Text>
-            </View>
-          )}
-          
-          {item.inSystem && (
-            <View style={styles.inSystemBadge}>
-              <Text style={styles.inSystemBadgeText}>Disponível</Text>
-            </View>
-          )}
-          
-          {item.fromGoogle && !item.inSystem && (
-            <View style={styles.notAvailableBadge}>
-              <Text style={styles.notAvailableBadgeText}>Não disponível</Text>
-            </View>
-          )}
-          
-          {item.isRecent && (
-            <View style={styles.recentBadge}>
-              <Text style={styles.recentBadgeText}>Recente</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      
-      <MaterialCommunityIcons 
-        name={item.fromGoogle && !item.inSystem ? "close-circle" : "chevron-right"} 
-        size={24} 
-        color={item.fromGoogle && !item.inSystem ? "#D32F2F" : "#757575"} 
-      />
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   // Renderizar resultados
   const renderResults = () => {
@@ -465,11 +476,30 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style }) =>
       );
     }
     
+    // Se estiver dentro de um ScrollView, use componentes básicos em vez de FlatList
+    if (insideScrollView) {
+      return (
+        <ScrollView 
+      style={{ maxHeight: SCREEN_WIDTH * 0.8 }}
+      nestedScrollEnabled={true}
+      keyboardShouldPersistTaps="handled"
+    >
+      {displayResults.map((item, index) => (
+        <View key={item.id || index}>
+          {renderCondoItem({item, index})}
+          {index < displayResults.length - 1 && <Divider />}
+        </View>
+      ))}
+    </ScrollView>
+      );
+    }
+    
+    // Caso contrário, use FlatList para eficiência
     return (
       <FlatList
         data={displayResults}
         renderItem={renderCondoItem}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.id || String(Math.random())}
         ItemSeparatorComponent={() => <Divider />}
         contentContainerStyle={styles.resultsList}
         keyboardShouldPersistTaps="handled"
@@ -690,10 +720,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   resultsContainer: {
-    maxHeight: SCREEN_WIDTH * 1.2,
+    maxHeight: SCREEN_WIDTH * 0.8, // Reduzido de 1.2 para 0.8
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     elevation: 1,
+    zIndex: 1, // Adicionar z-index para controlar a sobreposição
+    position: 'relative', // Garantir que o z-index funcione corretamente
+    marginBottom: 16, // Adicionar margem inferior para separar das dicas
   },
   resultsList: {
     paddingBottom: 8,

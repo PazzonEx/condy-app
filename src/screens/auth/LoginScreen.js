@@ -9,6 +9,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
   Animated,
   Dimensions
 } from 'react-native';
@@ -313,10 +314,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    
   },
   scrollContainer: {
     flexGrow: 1,
     paddingBottom: 24,
+    
   },
   logoContainer: {
     alignItems: 'center',

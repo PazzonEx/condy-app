@@ -460,13 +460,7 @@ const submitForm = async () => {
       'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação.',
       [{ 
         text: 'OK', 
-        onPress: () => {
-          // Recarregar a aplicação/navegação
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Main' }],
-          });
-        } 
+        
       }]
     );
   } catch (error) {

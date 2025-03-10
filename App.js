@@ -1,11 +1,10 @@
-// Modificação em App.js
-
 import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import { LogBox } from 'react-native';
 import * as Notifications from 'expo-notifications';
-
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 // Importar navegador principal
 import AppNavigator from './src/navigation';
 
@@ -40,19 +39,35 @@ export default function App() {
   const [expoPushToken, setExpoPushToken] = useState('');
   const notificationListener = useRef();
   const responseListener = useRef();
+  
 
+// No componente principal ou hook de inicialização
+useEffect(() => {
+  (async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Permissão de localização negada');
+        // Mostrar mensagem amigável ao usuário
+      }
+    } catch (error) {
+      console.error('Erro ao solicitar permissão de localização:', error);
+    }
+  })();
+}, []);
+  
   useEffect(() => {
     // Registrar para receber notificações
     registerForPushNotifications();
-
+    
     // Configurar listeners para notificações
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received:', notification);
     });
-
+    
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('Notification response received:', response);
-      
+            
       // Aqui você pode implementar a navegação para uma tela específica
       // com base nos dados da notificação
       const data = response.notification.request.content.data;
@@ -62,14 +77,14 @@ export default function App() {
         // Uma solução seria usar um estado global ou contexto para armazenar esta ação
       }
     });
-
+    
     // Limpar listeners quando o componente for desmontado
     return () => {
       Notifications.removeNotificationSubscription(notificationListener.current);
       Notifications.removeNotificationSubscription(responseListener.current);
     };
   }, []);
-
+  
   const registerForPushNotifications = async () => {
     try {
       const token = await NotificationService.registerForPushNotificationsAsync();
@@ -81,13 +96,15 @@ export default function App() {
       console.log('Error registering for push notifications:', error);
     }
   };
-
+  
   return (
-    <PaperProvider theme={theme}>
-      <AuthProvider>
-        <AppNavigator />
-        <StatusBar style="auto" />
-      </AuthProvider>
-    </PaperProvider>
+    <SafeAreaProvider>
+      <PaperProvider theme={theme}>
+        <AuthProvider>
+          <AppNavigator />
+          <StatusBar style="auto" />
+        </AuthProvider>
+      </PaperProvider>
+    </SafeAreaProvider>
   );
 }

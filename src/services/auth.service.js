@@ -22,12 +22,25 @@ async register(email, password, displayName, userType) {
 
     // Registrar usuário no Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // Verificação adicional
+      if (!userCredential || !userCredential.user) {
+        console.error("Falha na criação do usuário - objeto userCredential:", userCredential);
+        throw new Error('Falha ao criar usuário no Firebase Auth');
+      }
+    
     const user = userCredential.user;
+
+      // Verificação adicional
+    if (!userCredential || !userCredential.user) {
+      console.error("Falha na criação do usuário - objeto userCredential:", userCredential);
+      throw new Error('Falha ao criar usuário no Firebase Auth');
+    }
     
     // Verificar se o user existe antes de prosseguir
     if (!user) {
       throw new Error('Falha na criação do usuário');
     }
+
     
     // Garantir que temos um tipo de usuário válido
     if (!userType || !['resident', 'driver', 'condo', 'admin'].includes(userType)) {

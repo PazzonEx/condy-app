@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from 'react-native-paper';
-
+import {Platform, StatusBar} from 'react-native';
 // Hooks
 import { useAuth } from '../hooks/useAuth';
 
@@ -37,7 +37,10 @@ const AuthNavigator = () => {
     <Stack.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: theme.colors.primary,
+          backgroundColor: '#1E88E5',
+           // Altura maior para acomodar a status bar
+          // Ou use paddingTop para adicionar espaço adicional
+          height: Platform.OS === 'android' ? 80 + StatusBar.currentHeight : 80,
         },
         headerTintColor: 'white',
         headerTitleStyle: {
@@ -144,16 +147,17 @@ const RootNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{
       headerStyle: {
-        backgroundColor: theme.colors.primary,
+        backgroundColor: '#1E88E5',
+        
       },
-      headerTintColor: 'white',
+      headerTintColor: '#000',
       headerTitleStyle: {
         fontWeight: 'bold',
       },
     }}>
       {!currentUser ? (
         // Não autenticado
-        <Stack.Screen name="Auth" component={AuthNavigator} />
+        <Stack.Screen name="Entrar" component={AuthNavigator} options={{ headerMode: false}}   />
       ) : needsProfileCompletion() ? (
         // Perfil incompleto - Redirecionar para tela de complementação
         (() => {

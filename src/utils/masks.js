@@ -10,18 +10,20 @@ export const maskCPF = (value) => {
     
     // Remove caracteres não numéricos
     const cleaned = value.replace(/\D/g, '');
+    const trimmed = cleaned.slice(0, 11);
     
     // Formata o CPF (XXX.XXX.XXX-XX)
-    let formatted = '';
-    if (cleaned.length <= 3) {
-      formatted = cleaned;
-    } else if (cleaned.length <= 6) {
-      formatted = `${cleaned.slice(0, 3)}.${cleaned.slice(3)}`;
-    } else if (cleaned.length <= 9) {
-      formatted = `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6)}`;
-    } else {
-      formatted = `${cleaned.slice(0, 3)}.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-${cleaned.slice(9, 11)}`;
-    }
+     // Formata o CPF (XXX.XXX.XXX-XX)
+  let formatted = '';
+  if (trimmed.length <= 3) {
+    formatted = trimmed;
+  } else if (trimmed.length <= 6) {
+    formatted = `${trimmed.slice(0, 3)}.${trimmed.slice(3)}`;
+  } else if (trimmed.length <= 9) {
+    formatted = `${trimmed.slice(0, 3)}.${trimmed.slice(3, 6)}.${trimmed.slice(6)}`;
+  } else {
+    formatted = `${trimmed.slice(0, 3)}.${trimmed.slice(3, 6)}.${trimmed.slice(6, 9)}-${trimmed.slice(9, 11)}`;
+  }
     
     return formatted;
   };
