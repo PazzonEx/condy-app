@@ -16,7 +16,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
-
+import GooglePlacesCondoSearch from '../../components/GooglePlacesCondoSearch';
 // Serviços
 import FirestoreService from '../../services/firestore.service';
 
@@ -143,11 +143,35 @@ const getUserStats = async () => {
 };
 // Adicionar componente para exibir moradores por condomínio
 const CondoResidentsCard = ({ condos }) => {
+  const navigation = useNavigation();
+  
+  // Calcular total de residentes
+  const totalResidents = condos.reduce((sum, condo) => sum + condo.residentCount, 0);
+
+  // Verificação de condos vazio
   if (!condos || condos.length === 0) {
     return (
       <Surface style={styles.condoResidentsCard}>
         <Text style={styles.sectionTitle}>Moradores por Condomínio</Text>
         <Divider style={styles.divider} />
+        
+        <GooglePlacesCondoSearch 
+          onSelectCondo={(selectedCondo) => {
+            // Navegar para lista de moradores do condomínio selecionado
+            navigation.navigate('CondosTab', {
+              screen: 'AdminUsersList',
+              params: {
+                userType: 'resident',
+                condoId: selectedCondo.id,
+                title: `Moradores - ${selectedCondo.name.substring(0, 15)}${selectedCondo.name.length > 15 ? '...' : ''}`
+              }
+            });
+          }}
+          style={{ marginBottom: 16 }}
+          initialValue=""
+          insideScrollView={true}
+        />
+
         <View style={styles.emptyContainer}>
           <MaterialCommunityIcons name="home-city" size={48} color="#BDBDBD" />
           <Text style={styles.emptyText}>Nenhum condomínio com moradores encontrado</Text>
@@ -155,10 +179,8 @@ const CondoResidentsCard = ({ condos }) => {
       </Surface>
     );
   }
-  
-  // Calcular total de moradores
-  const totalResidents = condos.reduce((sum, condo) => sum + condo.residentCount, 0);
-  
+
+  // Renderização quando há condomínios
   return (
     <Surface style={styles.condoResidentsCard}>
       <View style={styles.sectionHeader}>
@@ -169,65 +191,72 @@ const CondoResidentsCard = ({ condos }) => {
       </View>
       <Divider style={styles.divider} />
       
-      {condos.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Nenhum condomínio com moradores encontrado</Text>
-        </View>
-      ) : (
-        <>
-          {condos.map((condo) => (
-            <TouchableOpacity 
-              key={condo.id} 
-              style={styles.condoItem}
-              onPress={() => {
-                // Navegar para a lista de moradores deste condomínio
-                navigation.navigate('CondosTab', {
-                  screen: 'AdminUsersList',
-                  params: {
-                    condoId: condo.id,
-                    userType: 'resident',
-                    title: `Moradores - ${condo.name.substring(0, 15)}${condo.name.length > 15 ? '...' : ''}`
-                  }
-                });
-              }}
-            >
-              <View style={styles.condoInfo}>
-                <Text style={styles.condoName} numberOfLines={1}>{condo.name}</Text>
-                <Text style={styles.condoAddress} numberOfLines={1}>{condo.address}</Text>
-              </View>
-              <View style={styles.condoStats}>
-                <Text style={[
-                  styles.residentCount, 
-                  {color: condo.residentCount > 0 ? '#2196F3' : '#9E9E9E'}
-                ]}>
-                  {condo.residentCount}
-                </Text>
-                <Text style={styles.residentLabel}>
-                  {condo.residentCount === 1 ? 'morador' : 'moradores'}
-                </Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color="#BDBDBD" />
-            </TouchableOpacity>
-          ))}
-          
-          <Button 
-            mode="outlined" 
-            style={styles.viewAllButton}
-            onPress={() => {
-              // Navegar para lista completa de moradores
-              navigation.navigate('CondosTab', {
-                screen: 'AdminUsersList',
-                params: {
-                  userType: 'resident',
-                  title: 'Todos os Moradores'
-                }
-              });
-            }}
-          >
-            Ver Todos os Moradores
-          </Button>
-        </>
-      )}
+      <GooglePlacesCondoSearch 
+        onSelectCondo={(selectedCondo) => {
+          // Navegar para lista de moradores do condomínio selecionado
+          navigation.navigate('CondosTab', {
+            screen: 'AdminUsersList',
+            params: {
+              userType: 'resident',
+              condoId: selectedCondo.id,
+              title: `Moradores - ${selectedCondo.name.substring(0, 15)}${selectedCondo.name.length > 15 ? '...' : ''}`
+            }
+          });
+        }}
+        style={{ marginBottom: 16 }}
+        initialValue=""
+        insideScrollView={true}
+      />
+
+      {condos.map((condo) => (
+        <TouchableOpacity 
+          key={condo.id} 
+          style={styles.condoItem}
+          onPress={() => {
+            navigation.navigate('CondosTab', {
+              screen: 'AdminUsersList',
+              params: {
+                condoId: condo.id,
+                userType: 'resident',
+                title: `Moradores - ${condo.name.substring(0, 15)}${condo.name.length > 15 ? '...' : ''}`
+              }
+            });
+          }}
+        >
+          <View style={styles.condoInfo}>
+            <Text style={styles.condoName} numberOfLines={1}>{condo.name}</Text>
+            <Text style={styles.condoAddress} numberOfLines={1}>{condo.address}</Text>
+          </View>
+          <View style={styles.condoStats}>
+            <Text style={[
+              styles.residentCount, 
+              {color: condo.residentCount > 0 ? '#2196F3' : '#9E9E9E'}
+            ]}>
+              {condo.residentCount}
+            </Text>
+            <Text style={styles.residentLabel}>
+              {condo.residentCount === 1 ? 'morador' : 'moradores'}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={24} color="#BDBDBD" />
+        </TouchableOpacity>
+      ))}
+      
+      <Button 
+        mode="outlined" 
+        style={styles.viewAllButton}
+        onPress={() => {
+          navigation.navigate('CondosTab', {
+            screen: 'AdminUsersList',
+            params: {
+              userType: 'resident',
+              title: 'Todos os Moradores'
+            }
+          });
+        }}
+      >
+        Ver Todos os Moradores
+      </Button>
     </Surface>
   );
 };

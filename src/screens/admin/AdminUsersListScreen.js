@@ -44,8 +44,14 @@ const AdminUsersListScreen = () => {
   
   // Carregar usuários
   useEffect(() => {
+    // Resetar estados antes de carregar
+    setUsers([]);
+    setFilteredUsers([]);
+    setSearchQuery('');
+    setActiveFilter(status || 'all');
+    
     loadUsers();
-  }, [userType, status]);
+  }, [userType, status, route.params?.condoId]);
   
   // Função para carregar usuários
 // Em src/screens/admin/AdminUsersListScreen.js
@@ -78,10 +84,13 @@ const loadUsers = async () => {
       console.log(`Filtrando moradores do condomínio: ${condoId}`);
       
       try {
-        // Tentativa 1: Usar consulta direta em campo aninhado
+        // Buscar moradores com base no condomínio
         const usersData = await FirestoreService.queryDocuments(
           'residents',
-          [{ field: 'residenceData.condoId', operator: '==', value: condoId }]
+          [
+            { field: 'residenceData.condoId', operator: '==', value: condoId }
+          ],
+          { field: 'name', direction: 'asc' } // Ordenar por nome
         );
         
         console.log(`Encontrados ${usersData.length} moradores para o condomínio ${condoId}`);
@@ -89,9 +98,9 @@ const loadUsers = async () => {
         setUsers(usersData);
         filterUsers(usersData, searchQuery, activeFilter);
       } catch (queryError) {
-        console.error('Erro ao consultar com campo aninhado, tentando método alternativo:', queryError);
+        console.error('Erro ao buscar moradores por condomínio:', queryError);
         
-        // Tentativa 2: Método alternativo se a consulta aninhada falhar
+        // Fallback: método alternativo de busca
         const allResidents = await FirestoreService.getCollection('residents');
         const filteredResidents = allResidents.filter(resident => 
           resident.residenceData?.condoId === condoId
@@ -131,7 +140,7 @@ const loadUsers = async () => {
       collectionName,
       conditions,
       sortBy,
-      limit
+      null // Sem limite de resultados
     );
     
     console.log(`Encontrados ${usersData.length} ${userType || 'usuários'} com os filtros fornecidos`);
@@ -155,10 +164,35 @@ const loadUsers = async () => {
     if (query) {
       const lowerQuery = query.toLowerCase();
       result = result.filter(user => {
-        const name = getUserDisplayName(user).toLowerCase();
-        const email = (user.email || '').toLowerCase();
-        
-        return name.includes(lowerQuery) || email.includes(lowerQuery);
+        // Para diferentes tipos de usuários, buscar em campos diferentes
+        switch (userType) {
+          case 'resident':
+            return (
+              (user.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.personalData?.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.email || '').toLowerCase().includes(lowerQuery)
+            );
+          case 'condo':
+            return (
+              (user.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.condoData?.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.condoData?.cnpj || '').toLowerCase().includes(lowerQuery) ||
+              (user.email || '').toLowerCase().includes(lowerQuery) ||
+              (user.address || '').toLowerCase().includes(lowerQuery)
+            );
+          case 'driver':
+            return (
+              (user.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.personalData?.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.vehicleData?.plate || '').toLowerCase().includes(lowerQuery) ||
+              (user.email || '').toLowerCase().includes(lowerQuery)
+            );
+          default:
+            return (
+              (user.name || '').toLowerCase().includes(lowerQuery) ||
+              (user.email || '').toLowerCase().includes(lowerQuery)
+            );
+        }
       });
     }
     
@@ -221,11 +255,20 @@ const loadUsers = async () => {
     
     switch (type) {
       case 'resident':
-        return user.name || user.personalData?.name || user.displayName || 'Morador sem nome';
+        return user.name || 
+               user.personalData?.name || 
+               user.displayName || 
+               'Morador sem nome';
       case 'driver':
-        return user.name || user.personalData?.name || user.displayName || 'Motorista sem nome';
+        return user.name || 
+               user.personalData?.name || 
+               user.displayName || 
+               'Motorista sem nome';
       case 'condo':
-        return user.name || user.condoData?.name || user.displayName || 'Condomínio sem nome';
+        return user.name || 
+               user.condoData?.name || 
+               user.displayName || 
+               'Condomínio sem nome';
       default:
         return user.displayName || user.email || 'Usuário sem nome';
     }
@@ -256,15 +299,55 @@ const loadUsers = async () => {
         >
           <View style={styles.userAvatar}>
             {userAvatar ? (
-              <Avatar.Image size={40} source={{ uri: userAvatar }} />
+              <Avatar.Image size={60} source={{ uri: userAvatar }} />
             ) : (
               <Avatar.Icon 
-                size={40} 
+                size={60} 
                 icon={getUserTypeIcon(userType)}
                 style={{ backgroundColor: getUserTypeColor(userType) + '30' }}
                 color={getUserTypeColor(userType)}
               />
             )}
+          </View>
+          
+          <View style={styles.userInfo}>
+            <View style={styles.userHeader}>
+              <Text style={styles.userName} numberOfLines={1}>
+                {userName}
+              </Text>
+              <View style={[
+                styles.statusBadge, 
+                { backgroundColor: getStatusColor(userStatus) + '20' }
+              ]}>
+                <Text style={[
+                  styles.statusText, 
+                  { color: getStatusColor(userStatus) }
+                ]}>
+                  {getStatusLabel(userStatus)}
+                </Text>
+              </View>
+            </View>
+            
+            {userType === 'resident' && (
+              <View style={styles.userDetails}>
+                <Text style={styles.userDetailsText} numberOfLines={1}>
+                  Unidade: {item.residenceData?.unit || 'N/A'} 
+                  {item.residenceData?.block ? ` - Bloco ${item.residenceData.block}` : ''}
+                </Text>
+              </View>
+            )}
+            
+            {userType === 'condo' && (
+              <View style={styles.userDetails}>
+                <Text style={styles.userDetailsText} numberOfLines={1}>
+                  {item.condoData?.address || 'Endereço não informado'}
+                </Text>
+              </View>
+            )}
+            
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {item.email || 'Sem email'}
+            </Text>
           </View>
         </TouchableOpacity>
       </Surface>
@@ -537,6 +620,32 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  userHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  userEmail: {
+    fontSize: 12,
+    color: '#757575',
+  },
+  userDetails: {
+    marginBottom: 4,
+  },
+  userDetailsText: {
+    fontSize: 12,
+    color: '#757575',
   },
   userName: {
     fontSize: 16,
