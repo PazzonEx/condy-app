@@ -1,33 +1,28 @@
+// src/navigation/ResidentNavigator.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-// Importar telas de residentes
-// Nota: Essas telas serão criadas posteriormente
+// Importar telas
 import ResidentHomeScreen from '../screens/resident/ResidentHomeScreen';
 import NewAccessRequestScreen from '../screens/resident/NewAccessRequestScreen';
 import AccessHistoryScreen from '../screens/resident/AccessHistoryScreen';
 import ResidentProfileScreen from '../screens/resident/ResidentProfileScreen';
 import AccessDetailsScreen from '../screens/resident/AccessDetailsScreen';
 import ResidentSettingsScreen from '../screens/resident/ResidentSettingsScreen';
-
 import ResidentNotificationsScreen from '../screens/resident/ResidentNotificationsScreen';
 
-
-// Criar navegadores
 const Tab = createBottomTabNavigator();
-const HomeStack = createStackNavigator();
-const HistoryStack = createStackNavigator();
-const ProfileStack = createStackNavigator();
+const Stack = createStackNavigator();
 
-// Stack para a aba Home
-const HomeStackNavigator = () => {
+// Stack para cada aba
+const HomeStack = () => {
   const theme = useTheme();
   
   return (
-    <HomeStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -38,36 +33,19 @@ const HomeStackNavigator = () => {
         },
       }}
     >
-      <HomeStack.Screen 
-        name="ResidentHome" 
-        component={ResidentHomeScreen} 
-        options={{ title: 'Início' }}
-      />
-      <HomeStack.Screen 
-          name="ResidentNotifications" 
-          component={ResidentNotificationsScreen} 
-          options={{ title: 'Access Requests' }}
-        />
-      <HomeStack.Screen 
-        name="NewAccessRequest" 
-        component={NewAccessRequestScreen} 
-        options={{ title: 'Nova Solicitação' }}
-      />
-      <HomeStack.Screen 
-        name="AccessDetails" 
-        component={AccessDetailsScreen} 
-        options={{ title: 'Detalhes do Acesso' }}
-      />
-    </HomeStack.Navigator>
+      <Stack.Screen name="ResidentHome" component={ResidentHomeScreen} options={{ title: 'Início' }} />
+      <Stack.Screen name="ResidentNotifications" component={ResidentNotificationsScreen} options={{ title: 'Notificações' }} />
+      <Stack.Screen name="NewAccessRequest" component={NewAccessRequestScreen} options={{ title: 'Nova Solicitação' }} />
+      <Stack.Screen name="AccessDetails" component={AccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+    </Stack.Navigator>
   );
 };
 
-// Stack para a aba Histórico
-const HistoryStackNavigator = () => {
+const HistoryStack = () => {
   const theme = useTheme();
   
   return (
-    <HistoryStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -78,26 +56,17 @@ const HistoryStackNavigator = () => {
         },
       }}
     >
-      <HistoryStack.Screen 
-        name="AccessHistory" 
-        component={AccessHistoryScreen} 
-        options={{ title: 'Histórico' }}
-      />
-      <HistoryStack.Screen 
-        name="AccessDetails" 
-        component={AccessDetailsScreen} 
-        options={{ title: 'Detalhes do Acesso' }}
-      />
-    </HistoryStack.Navigator>
+      <Stack.Screen name="AccessHistory" component={AccessHistoryScreen} options={{ title: 'Histórico' }} />
+      <Stack.Screen name="AccessDetails" component={AccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+    </Stack.Navigator>
   );
 };
 
-// Stack para a aba Perfil
-const ProfileStackNavigator = () => {
+const ProfileStack = () => {
   const theme = useTheme();
   
   return (
-    <ProfileStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -108,21 +77,13 @@ const ProfileStackNavigator = () => {
         },
       }}
     >
-      <ProfileStack.Screen 
-        name="Profile" 
-        component={ResidentProfileScreen} 
-        options={{ title: 'Meu Perfil' }}
-      />
-      <ProfileStack.Screen 
-        name="Settings" 
-        component={ResidentSettingsScreen} 
-        options={{ title: 'Meu Perfil' }}
-      />
-    </ProfileStack.Navigator>
+      <Stack.Screen name="Profile" component={ResidentProfileScreen} options={{ title: 'Meu Perfil' }} />
+      <Stack.Screen name="Settings" component={ResidentSettingsScreen} options={{ title: 'Configurações' }} />
+    </Stack.Navigator>
   );
 };
 
-// Navegador principal para residentes (Tab Navigator)
+// Navegador principal (Tab Navigator)
 const ResidentNavigator = () => {
   const theme = useTheme();
   
@@ -144,26 +105,12 @@ const ResidentNavigator = () => {
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: 'gray',
-        headerShown: false,
+        headerShown: false, // Importante: desativa o cabeçalho do Tab Navigator
       })}
     >
-      <Tab.Screen 
-        name="Home" 
-        component={HomeStackNavigator} 
-        options={{ tabBarLabel: 'Início' }}
-      />
-      
-      
-      <Tab.Screen 
-        name="History" 
-        component={HistoryStackNavigator} 
-        options={{ tabBarLabel: 'Histórico' }}
-      />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileStackNavigator} 
-        options={{ tabBarLabel: 'Perfil' }}
-      />
+      <Tab.Screen name="Home" component={HomeStack} options={{ tabBarLabel: 'Início' }} />
+      <Tab.Screen name="History" component={HistoryStack} options={{ tabBarLabel: 'Histórico' }} />
+      <Tab.Screen name="Profile" component={ProfileStack} options={{ tabBarLabel: 'Perfil' }} />
     </Tab.Navigator>
   );
 };

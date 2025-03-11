@@ -48,56 +48,103 @@ const AdminUsersListScreen = () => {
   }, [userType, status]);
   
   // Função para carregar usuários
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
+// Em src/screens/admin/AdminUsersListScreen.js
+// No método loadUsers
+
+// Função para carregar usuários
+const loadUsers = async () => {
+  try {
+    setLoading(true);
+    
+    // Determinar coleção com base no tipo
+    let collectionName;
+    switch (userType) {
+      case 'resident':
+        collectionName = 'residents';
+        break;
+      case 'driver':
+        collectionName = 'drivers';
+        break;
+      case 'condo':
+        collectionName = 'condos';
+        break;
+      default:
+        collectionName = 'users';
+    }
+    
+    // Verificar se precisa filtrar por condomínio (caso especial para moradores)
+    const condoId = route.params?.condoId;
+    if (condoId && userType === 'resident') {
+      console.log(`Filtrando moradores do condomínio: ${condoId}`);
       
-      // Determinar coleção com base no tipo
-      let collectionName;
-      switch (userType) {
-        case 'resident':
-          collectionName = 'residents';
-          break;
-        case 'driver':
-          collectionName = 'drivers';
-          break;
-        case 'condo':
-          collectionName = 'condos';
-          break;
-        default:
-          collectionName = 'users';
+      try {
+        // Tentativa 1: Usar consulta direta em campo aninhado
+        const usersData = await FirestoreService.queryDocuments(
+          'residents',
+          [{ field: 'residenceData.condoId', operator: '==', value: condoId }]
+        );
+        
+        console.log(`Encontrados ${usersData.length} moradores para o condomínio ${condoId}`);
+        
+        setUsers(usersData);
+        filterUsers(usersData, searchQuery, activeFilter);
+      } catch (queryError) {
+        console.error('Erro ao consultar com campo aninhado, tentando método alternativo:', queryError);
+        
+        // Tentativa 2: Método alternativo se a consulta aninhada falhar
+        const allResidents = await FirestoreService.getCollection('residents');
+        const filteredResidents = allResidents.filter(resident => 
+          resident.residenceData?.condoId === condoId
+        );
+        
+        console.log(`Filtro manual: Encontrados ${filteredResidents.length} moradores para o condomínio ${condoId}`);
+        
+        setUsers(filteredResidents);
+        filterUsers(filteredResidents, searchQuery, activeFilter);
       }
       
-      // Condições de consulta
-      const conditions = [];
-      
-      // Filtrar por tipo se estiver na coleção 'users'
-      if (collectionName === 'users' && userType) {
-        conditions.push({ field: 'type', operator: '==', value: userType });
-      }
-      
-      // Filtrar por status se fornecido
-      if (status) {
-        conditions.push({ field: 'status', operator: '==', value: status });
-      }
-      
-      // Buscar usuários
-      const usersData = await FirestoreService.queryDocuments(
-        collectionName,
-        conditions,
-        { field: 'createdAt', direction: 'desc' }
-      );
-      
-      setUsers(usersData);
-      filterUsers(usersData, searchQuery, activeFilter);
-    } catch (error) {
-      console.error('Erro ao carregar usuários:', error);
-    } finally {
       setLoading(false);
       setRefreshing(false);
+      return;
     }
-  };
-  
+    
+    // Condições de consulta para casos normais
+    const conditions = [];
+    
+    // Filtrar por tipo se estiver na coleção 'users'
+    if (collectionName === 'users' && userType) {
+      conditions.push({ field: 'type', operator: '==', value: userType });
+    }
+    
+    // Filtrar por status se fornecido
+    if (status) {
+      conditions.push({ field: 'status', operator: '==', value: status });
+    }
+    
+    console.log('Condições de busca:', JSON.stringify(conditions));
+    
+    // Ordenar por data de criação (mais recentes primeiro)
+    const sortBy = { field: 'createdAt', direction: 'desc' };
+    
+    // Buscar usuários
+    const usersData = await FirestoreService.queryDocuments(
+      collectionName,
+      conditions,
+      sortBy,
+      limit
+    );
+    
+    console.log(`Encontrados ${usersData.length} ${userType || 'usuários'} com os filtros fornecidos`);
+    
+    setUsers(usersData);
+    filterUsers(usersData, searchQuery, activeFilter);
+  } catch (error) {
+    console.error('Erro ao carregar usuários:', error);
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
   // Filtrar usuários
   const filterUsers = (usersList, query, filter) => {
     if (!usersList) return;

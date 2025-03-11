@@ -1,3 +1,4 @@
+// src/navigation/DriverNavigator.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -13,19 +14,15 @@ import DriverCondoSearchScreen from '../screens/driver/DriverCondoSearchScreen';
 import DriverQRCodeScreen from '../screens/driver/DriverQRCodeScreen';
 import SubscriptionPlansScreen from '../screens/shared/SubscriptionPlansScreen';
 
-
-// Criar navegadores
 const Tab = createBottomTabNavigator();
-const HomeStack = createStackNavigator();
-const SearchStack = createStackNavigator();
-const ProfileStack = createStackNavigator();
+const Stack = createStackNavigator();
 
-// Stack para a aba Home (Solicitações)
-const HomeStackNavigator = () => {
+// Stack para aba Home (Solicitações)
+const HomeStack = () => {
   const theme = useTheme();
   
   return (
-    <HomeStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -36,33 +33,24 @@ const HomeStackNavigator = () => {
         },
       }}
     >
-      <HomeStack.Screen 
-        name="DriverHome" 
-        component={DriverHomeScreen} 
-        options={{ title: 'Solicitações' }}
-      />
-      <HomeStack.Screen 
+      <Stack.Screen name="DriverHome" component={DriverHomeScreen} options={{ title: 'Solicitações' }} />
+      <Stack.Screen 
         name="DriverSubscription" 
         component={SubscriptionPlansScreen} 
         initialParams={{ userType: 'driver' }}
         options={{ title: 'Planos para Motoristas' }}
       />
-      
-      <HomeStack.Screen 
-        name="DriverAccessDetails" 
-        component={DriverAccessDetailsScreen} 
-        options={{ title: 'Detalhes do Acesso' }}
-      />
-    </HomeStack.Navigator>
+      <Stack.Screen name="DriverAccessDetails" component={DriverAccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+    </Stack.Navigator>
   );
 };
 
-// Stack para a aba Busca de Condomínios
-const SearchStackNavigator = () => {
+// Stack para aba Busca de Condomínios
+const SearchStack = () => {
   const theme = useTheme();
   
   return (
-    <SearchStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -73,26 +61,18 @@ const SearchStackNavigator = () => {
         },
       }}
     >
-      <SearchStack.Screen 
-        name="DriverCondoSearch" 
-        component={DriverCondoSearchScreen} 
-        options={{ title: 'Buscar Condomínio' }}
-      />
-      <SearchStack.Screen 
-        name="DriverQRCode" 
-        component={DriverQRCodeScreen} 
-        options={{ title: 'Gerar QR Code' }}
-      />
-    </SearchStack.Navigator>
+      <Stack.Screen name="DriverCondoSearch" component={DriverCondoSearchScreen} options={{ title: 'Buscar Condomínio' }} />
+      <Stack.Screen name="DriverQRCode" component={DriverQRCodeScreen} options={{ title: 'Gerar QR Code' }} />
+    </Stack.Navigator>
   );
 };
 
-// Stack para a aba Perfil
-const ProfileStackNavigator = () => {
+// Stack para aba Perfil
+const ProfileStack = () => {
   const theme = useTheme();
   
   return (
-    <ProfileStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -103,17 +83,9 @@ const ProfileStackNavigator = () => {
         },
       }}
     >
-      <ProfileStack.Screen 
-        name="DriverProfile" 
-        component={DriverProfileScreen} 
-        options={{ title: 'Meu Perfil' }}
-      />
-      <ProfileStack.Screen 
-        name="DriverSettings" 
-        component={DriverSettingsScreen} 
-        options={{ title: 'Configurações' }}
-      />
-    </ProfileStack.Navigator>
+      <Stack.Screen name="DriverProfile" component={DriverProfileScreen} options={{ title: 'Meu Perfil' }} />
+      <Stack.Screen name="DriverSettings" component={DriverSettingsScreen} options={{ title: 'Configurações' }} />
+    </Stack.Navigator>
   );
 };
 
@@ -145,24 +117,12 @@ const DriverNavigator = () => {
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: 'gray',
-        headerShown: false,
+        headerShown: false, // Importante: desativa o cabeçalho do Tab Navigator
       })}
     >
-      <Tab.Screen 
-        name="Home" 
-        component={HomeStackNavigator} 
-        options={{ tabBarLabel: 'Solicitações' }}
-      />
-      <Tab.Screen 
-        name="Search" 
-        component={SearchStackNavigator} 
-        options={{ tabBarLabel: 'Buscar Condomínio' }}
-      />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileStackNavigator} 
-        options={{ tabBarLabel: 'Perfil' }}
-      />
+      <Tab.Screen name="Home" component={HomeStack} options={{ tabBarLabel: 'Solicitações' }} />
+      <Tab.Screen name="Search" component={SearchStack} options={{ tabBarLabel: 'Buscar Condomínio' }} />
+      <Tab.Screen name="Profile" component={ProfileStack} options={{ tabBarLabel: 'Perfil' }} />
     </Tab.Navigator>
   );
 };

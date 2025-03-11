@@ -33,16 +33,51 @@ export function AuthProvider({ children }) {
         setLoading(true);
         
         if (user) {
-          // Buscar informações adicionais do usuário no Firestore
-          const userDoc = await FirestoreService.getDocument('users', user.uid);
-          setUserProfile(userDoc);
+          console.log("Usuário autenticado:", user.email);
+         
           
-          // Verificar se é admin
-          if (userDoc?.type === 'admin') {
+           // Verificar se é o email de admin
+           if (user.email === 'admin@condy.com') {
+            console.log("Email de admin detectado");
+            // Forçar tipo admin com perfil completo
+            const adminProfile = {
+              type: 'admin',
+              status: 'active',
+              displayName: 'Administrador',
+              email: user.email,
+              profileComplete: true // Esta é a mudança importante
+            };
+            setUserProfile(adminProfile);
             setIsAdmin(true);
-          } else {
-            setIsAdmin(false);
+            
+            // Atualizar documento no Firestore para evitar problema futuro
+            try {
+              await FirestoreService.updateDocument('users', user.uid, {
+                type: 'admin',
+                status: 'active',
+                displayName: 'Administrador',
+                profileComplete: true
+              });
+              
+              // Também atualizar na coleção admins
+              await FirestoreService.updateDocument('admins', user.uid, {
+                name: 'Administrador',
+                email: user.email,
+                status: 'active',
+                profileComplete: true,
+                type: 'admin'
+              });
+            } catch (error) {
+              console.log("Erro ao atualizar perfil admin:", error);
+            }
+            
+            setLoading(false);
+            return;
           }
+         // Buscar informações adicionais do usuário no Firestore
+         const userDoc = await FirestoreService.getDocument('users', user.uid);
+         console.log("Documento do usuário:", userDoc);
+         setUserProfile(userDoc);
           
           // Registrar token de notificação
           registerNotificationToken(user.uid);
@@ -79,7 +114,44 @@ const loadUserTypeSpecificData = async (userType, userId) => {
     }
     
     console.log(`Carregando dados específicos para usuário tipo: ${userType}, ID: ${userId}`);
-    
+      // Tratamento especial para admin
+      if (userType === 'admin') {
+        // Verificar se documento já existe
+        let adminDoc = await FirestoreService.getDocument('admins', userId);
+        
+        // Se não existir, criar com perfil completo
+        if (!adminDoc) {
+          console.log("Criando documento de admin completo");
+          const adminData = {
+            name: 'Administrador',
+            email: currentUser.email || 'admin@condy.com',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            profileComplete: true,
+            type: 'admin'
+          };
+          
+          await FirestoreService.createDocumentWithId('admins', userId, adminData);
+          
+          // Também atualizar documento de usuário
+          await FirestoreService.updateDocument('users', userId, {
+            profileComplete: true,
+            status: 'active'
+          });
+          
+          // Atualizar o perfil
+          setUserProfile(prev => ({ 
+            ...prev, 
+            ...adminData,
+            profileComplete: true,
+            status: 'active'
+          }));
+        }
+        return;
+      }
+
+
     let collectionName = '';
     
     // Determinar a coleção correta com base no tipo

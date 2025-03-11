@@ -559,7 +559,7 @@ const renderStep3 = () => (
         mode="outlined"
         style={styles.input}
         placeholder="Exemplo: Fiat"
-        left={<TextInput.Icon icon="car-marker" />}
+        left={<TextInput.Icon icon="car-multiple" />}
       />
     </View>
   </View>

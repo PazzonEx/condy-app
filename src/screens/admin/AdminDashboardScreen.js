@@ -1,10 +1,11 @@
 // src/screens/admin/AdminDashboardScreen.js
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl,TouchableOpacity} from 'react-native';
 import { 
   Text, 
   Surface, 
   Card, 
+  Chip,
   Button, 
   useTheme, 
   ActivityIndicator,
@@ -52,6 +53,34 @@ const AdminDashboardScreen = () => {
   useEffect(() => {
     loadStats();
   }, []);
+  // Adicionar ao useEffect principal:
+useEffect(() => {
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Carregar estatísticas gerais
+      const userStats = await getUserStats();
+      const usersByType = await getUsersByType();
+      const pendingApprovals = await getPendingApprovals();
+      const residentsByCondos = await getResidentsByCondos(); // Nova função
+      
+      setStats({
+        userStats,
+        usersByType,
+        pendingApprovals,
+        residentsByCondos // Novo campo
+      });
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+  
+  loadData();
+}, []);
+
   
   // Função para carregar estatísticas
   const loadStats = async () => {
@@ -85,19 +114,166 @@ const AdminDashboardScreen = () => {
     }
   };
   
-  // Estatísticas de usuários
-  const getUserStats = async () => {
-    // Buscar todos os usuários
-    const users = await FirestoreService.getCollection('users');
+ // Modificar a função getUserStats
+const getUserStats = async () => {
+  try {
+    // Buscar usuários ativos e válidos
+    const users = await FirestoreService.queryDocuments('users', [
+      { field: 'type', operator: 'in', value: ['resident', 'driver', 'condo'] }
+    ]);
+    
+    // Filtrar usuários reais (remover registros de teste ou inválidos)
+    const validUsers = users.filter(user => 
+      user.email && 
+      user.type && 
+      user.createdAt // Garantir que tenha data de criação
+    );
     
     // Contadores
-    const total = users.length;
-    const active = users.filter(user => user.status === 'active').length;
-    const pending = users.filter(user => user.status === 'pending_verification').length;
-    const rejected = users.filter(user => user.status === 'rejected').length;
+    const total = validUsers.length;
+    const active = validUsers.filter(user => user.status === 'active').length;
+    const pending = validUsers.filter(user => user.status === 'pending_verification').length;
+    const rejected = validUsers.filter(user => user.status === 'rejected').length;
     
     return { total, active, pending, rejected };
-  };
+  } catch (error) {
+    console.error('Erro ao obter estatísticas de usuários:', error);
+    return { total: 0, active: 0, pending: 0, rejected: 0 };
+  }
+};
+// Adicionar componente para exibir moradores por condomínio
+const CondoResidentsCard = ({ condos }) => {
+  if (!condos || condos.length === 0) {
+    return (
+      <Surface style={styles.condoResidentsCard}>
+        <Text style={styles.sectionTitle}>Moradores por Condomínio</Text>
+        <Divider style={styles.divider} />
+        <View style={styles.emptyContainer}>
+          <MaterialCommunityIcons name="home-city" size={48} color="#BDBDBD" />
+          <Text style={styles.emptyText}>Nenhum condomínio com moradores encontrado</Text>
+        </View>
+      </Surface>
+    );
+  }
+  
+  // Calcular total de moradores
+  const totalResidents = condos.reduce((sum, condo) => sum + condo.residentCount, 0);
+  
+  return (
+    <Surface style={styles.condoResidentsCard}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Moradores por Condomínio</Text>
+        <Chip style={styles.totalChip}>
+          {totalResidents} total
+        </Chip>
+      </View>
+      <Divider style={styles.divider} />
+      
+      {condos.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>Nenhum condomínio com moradores encontrado</Text>
+        </View>
+      ) : (
+        <>
+          {condos.map((condo) => (
+            <TouchableOpacity 
+              key={condo.id} 
+              style={styles.condoItem}
+              onPress={() => {
+                // Navegar para a lista de moradores deste condomínio
+                navigation.navigate('CondosTab', {
+                  screen: 'AdminUsersList',
+                  params: {
+                    condoId: condo.id,
+                    userType: 'resident',
+                    title: `Moradores - ${condo.name.substring(0, 15)}${condo.name.length > 15 ? '...' : ''}`
+                  }
+                });
+              }}
+            >
+              <View style={styles.condoInfo}>
+                <Text style={styles.condoName} numberOfLines={1}>{condo.name}</Text>
+                <Text style={styles.condoAddress} numberOfLines={1}>{condo.address}</Text>
+              </View>
+              <View style={styles.condoStats}>
+                <Text style={[
+                  styles.residentCount, 
+                  {color: condo.residentCount > 0 ? '#2196F3' : '#9E9E9E'}
+                ]}>
+                  {condo.residentCount}
+                </Text>
+                <Text style={styles.residentLabel}>
+                  {condo.residentCount === 1 ? 'morador' : 'moradores'}
+                </Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color="#BDBDBD" />
+            </TouchableOpacity>
+          ))}
+          
+          <Button 
+            mode="outlined" 
+            style={styles.viewAllButton}
+            onPress={() => {
+              // Navegar para lista completa de moradores
+              navigation.navigate('CondosTab', {
+                screen: 'AdminUsersList',
+                params: {
+                  userType: 'resident',
+                  title: 'Todos os Moradores'
+                }
+              });
+            }}
+          >
+            Ver Todos os Moradores
+          </Button>
+        </>
+      )}
+    </Surface>
+  );
+};
+
+// Adicionar uma nova função para obter moradores por condomínio
+// Em src/screens/admin/AdminDashboardScreen.js
+
+const getResidentsByCondos = async () => {
+  try {
+    // Buscar todos os condomínios ativos
+    const condos = await FirestoreService.getCollection('condos');
+    
+    // Filtrar apenas condomínios com dados válidos
+    const activeCondos = condos.filter(condo => 
+      condo.name || condo.condoData?.name || condo.displayName
+    );
+    
+    // Buscar todos os moradores
+    const allResidents = await FirestoreService.getCollection('residents');
+    
+    // Para cada condomínio, contar seus moradores
+    const condoWithResidents = activeCondos.map(condo => {
+      // Filtrar moradores que pertencem a este condomínio
+      // Importante: verificar a propriedade residenceData.condoId
+      const condoResidents = allResidents.filter(resident => 
+        resident.residenceData?.condoId === condo.id
+      );
+      
+      console.log(`Condomínio: ${condo.name || condo.condoData?.name || 'Sem nome'}, ID: ${condo.id}, Moradores: ${condoResidents.length}`);
+      
+      return {
+        id: condo.id,
+        name: condo.name || condo.condoData?.name || condo.displayName || 'Condomínio sem nome',
+        residentCount: condoResidents.length,
+        address: condo.address || condo.addressData?.fullAddress || 'Endereço não disponível'
+      };
+    });
+    
+    // Ordenar por número de moradores (decrescente)
+    return condoWithResidents.sort((a, b) => b.residentCount - a.residentCount);
+  } catch (error) {
+    console.error('Erro ao obter moradores por condomínio:', error);
+    return [];
+  }
+};
+
   
   // Estatísticas por tipo de usuário
   const getUsersByType = async () => {
@@ -175,23 +351,65 @@ const AdminDashboardScreen = () => {
   };
   
   // Navegar para tela de aprovação
-  const navigateToApproval = (user) => {
-    navigation.navigate('AdminApproval', {
+  
+const navigateToApproval = (user) => {
+  // Determinar em qual tab está a tela de aprovação baseado no tipo de usuário
+  let tabName;
+  if (user.type === 'condo') {
+    tabName = 'CondosTab';
+  } else if (user.type === 'driver') {
+    tabName = 'DriversTab';
+  } else {
+    // Para residentes ou tipos desconhecidos, usar tab de Condomínios por padrão
+    tabName = 'CondosTab';
+  }
+
+  // Navegar usando o caminho completo com a navegação aninhada
+  navigation.navigate(tabName, {
+    screen: 'AdminApproval',
+    params: {
       userId: user.id,
       userType: user.type,
       userName: user.name || user.displayName || 'Usuário'
-    });
-  };
+    }
+  });
+};
   
   // Navegar para lista de usuários
   const navigateToUsersList = (type, status) => {
     const title = getTypeTitle(type);
     
-    navigation.navigate('AdminUsersList', {
-      userType: type,
-      status: status,
-      title: status ? `${title} ${getStatusTitle(status)}` : title
-    });
+    // Usar navegação aninhada corretamente
+    if (type === 'condo') {
+      navigation.navigate('CondosTab', {
+        screen: 'AdminUsersList',
+        params: {
+          userType: type,
+          status: status,
+          title: status ? `${title} ${getStatusTitle(status)}` : title
+        }
+      });
+    } else if (type === 'driver') {
+      navigation.navigate('DriversTab', {
+        screen: 'AdminUsersList',
+        params: {
+          userType: type,
+          status: status,
+          title: status ? `${title} ${getStatusTitle(status)}` : title
+        }
+      });
+    } else {
+      // Para outros tipos ou quando status é mais importante que tipo
+      const targetTab = type === 'resident' ? 'CondosTab' : 'DriversTab';
+      navigation.navigate(targetTab, {
+        screen: 'AdminUsersList',
+        params: {
+          userType: type,
+          status: status,
+          title: status ? (type ? `${title} ${getStatusTitle(status)}` : getStatusTitle(status)) : (type ? title : 'Todos os Usuários')
+        }
+      });
+    }
   };
   
   // Título baseado no tipo
@@ -278,8 +496,7 @@ const AdminDashboardScreen = () => {
         <Text style={styles.loadingText}>Carregando estatísticas...</Text>
       </View>
     );
-  }
-  
+  }  
   return (
     <ScrollView 
       style={styles.container}
@@ -436,6 +653,7 @@ const AdminDashboardScreen = () => {
           </Button>
         )}
       </Surface>
+      <CondoResidentsCard condos={stats.residentsByCondos || []} />
       
       {/* Links Rápidos */}
       <Surface style={styles.quickLinksCard}>
@@ -597,6 +815,43 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  condoResidentsCard: {
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  condoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  condoInfo: {
+    flex: 1,
+  },
+  condoName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  condoAddress: {
+    fontSize: 12,
+    color: '#757575',
+  },
+  condoStats: {
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  residentCount: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2196F3',
+  },
+  residentLabel: {
+    fontSize: 12,
+    color: '#757575',
   },
   statCard: {
     width: '48%',

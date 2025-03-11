@@ -1,11 +1,9 @@
+// src/navigation/AdminNavigator.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from 'react-native-paper';
-import Button from '../components/Button';
-import { useAuth } from '../hooks/useAuth';
 
 // Componentes
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
@@ -17,7 +15,6 @@ import AdminUsersListScreen from '../screens/admin/AdminUsersListScreen';
 import AdminUserDetailsScreen from '../screens/admin/AdminUserDetailsScreen';
 import AdminSettingsPasswordScreen from '../screens/admin/AdminSettingsPasswordScreen';
 
-// Criar navegador de tabs
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -37,11 +34,7 @@ const DashboardStack = () => {
         },
       }}
     >
-      <Stack.Screen 
-        name="AdminDashboard" 
-        component={AdminDashboardScreen}
-        options={{ title: 'Dashboard' }}
-      />
+      <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Dashboard',headerShown: true  }} />
     </Stack.Navigator>
   );
 };
@@ -62,11 +55,7 @@ const CondosStack = () => {
         },
       }}
     >
-      <Stack.Screen 
-        name="AdminCondos" 
-        component={AdminCondosScreen}
-        options={{ title: 'Condomínios' }}
-      />
+      <Stack.Screen name="AdminCondos" component={AdminCondosScreen} options={{ title: 'Condomínios' }} />
       <Stack.Screen 
         name="AdminUsersList" 
         component={AdminUsersListScreen}
@@ -81,13 +70,7 @@ const CondosStack = () => {
           title: route.params?.userName || 'Detalhes do Usuário',
         })}
       />
-      <Stack.Screen 
-        name="AdminApproval" 
-        component={AdminApprovalScreen}
-        options={{
-          title: 'Aprovar Usuário',
-        }}
-      />
+      <Stack.Screen name="AdminApproval" component={AdminApprovalScreen} options={{ title: 'Aprovar Usuário' }} />
     </Stack.Navigator>
   );
 };
@@ -108,11 +91,7 @@ const DriversStack = () => {
         },
       }}
     >
-      <Stack.Screen 
-        name="AdminDrivers" 
-        component={AdminDriversScreen}
-        options={{ title: 'Motoristas' }}
-      />
+      <Stack.Screen name="AdminDrivers" component={AdminDriversScreen} options={{ title: 'Motoristas' }} />
       <Stack.Screen 
         name="AdminUserDetails" 
         component={AdminUserDetailsScreen}
@@ -120,13 +99,7 @@ const DriversStack = () => {
           title: route.params?.userName || 'Detalhes do Motorista',
         })}
       />
-      <Stack.Screen 
-        name="AdminApproval" 
-        component={AdminApprovalScreen}
-        options={{
-          title: 'Aprovar Motorista',
-        }}
-      />
+      <Stack.Screen name="AdminApproval" component={AdminApprovalScreen} options={{ title: 'Aprovar Motorista' }} />
     </Stack.Navigator>
   );
 };
@@ -147,16 +120,8 @@ const SettingsStack = () => {
         },
       }}
     >
-      <Stack.Screen 
-        name="AdminSettings" 
-        component={AdminSettingsScreen}
-        options={{ title: 'Configurações' }}
-      />
-      <Stack.Screen 
-        name="AdminSettingsPassword" 
-        component={AdminSettingsPasswordScreen}
-        options={{ title: 'Senha de Administrador' }}
-      />
+      <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} options={{ title: 'Configurações' }} />
+      <Stack.Screen name="AdminSettingsPassword" component={AdminSettingsPasswordScreen} options={{ title: 'Senha de Administrador' }} />
     </Stack.Navigator>
   );
 };
@@ -192,29 +157,13 @@ const AdminNavigator = () => {
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: 'gray',
-        headerShown: false,
+        headerShown: false, // Importante: desativa o cabeçalho do Tab Navigator
       })}
     >
-      <Tab.Screen 
-        name="DashboardTab" 
-        component={DashboardStack}
-        options={{ tabBarLabel: 'Dashboard' }}
-      />
-      <Tab.Screen 
-        name="CondosTab" 
-        component={CondosStack}
-        options={{ tabBarLabel: 'Condomínios' }}
-      />
-      <Tab.Screen 
-        name="DriversTab" 
-        component={DriversStack}
-        options={{ tabBarLabel: 'Motoristas' }}
-      />
-      <Tab.Screen 
-        name="SettingsTab" 
-        component={SettingsStack}
-        options={{ tabBarLabel: 'Configurações' }}
-      />
+      <Tab.Screen name="DashboardTab" component={DashboardStack} options={{ tabBarLabel: 'Dashboard',headerShown: false  }} />
+      <Tab.Screen name="CondosTab" component={CondosStack} options={{ tabBarLabel: 'Condomínios' }} />
+      <Tab.Screen name="DriversTab" component={DriversStack} options={{ tabBarLabel: 'Motoristas' }} />
+      <Tab.Screen name="SettingsTab" component={SettingsStack} options={{ tabBarLabel: 'Configurações' }} />
     </Tab.Navigator>
   );
 };

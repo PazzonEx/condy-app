@@ -125,32 +125,42 @@ const LoginScreen = ({ navigation }) => {
     return true;
   };
   
-  // Fazer login
-  const handleLogin = async () => {
-    if (!validateForm()) return;
-    
-    Keyboard.dismiss();
-    setLoading(true);
-    setShowError(false);
-    
-    try {
-      await login(email, password);
-      // Navegação é gerenciada pelo hook useAuth através do sistema de navegação baseado no tipo de usuário
-    } catch (error) {
-      let errorMsg = 'Falha ao fazer login. Tente novamente.';
-      
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMsg = 'Email ou senha incorretos';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
-      }
-      
-      setErrorMessage(errorMsg);
-      setShowError(true);
-    } finally {
-      setLoading(false);
+ // No componente LoginScreen
+const handleLogin = async () => {
+
+
+
+  
+  if (!validateForm()) return;
+  
+  Keyboard.dismiss();
+  setLoading(true);
+  setShowError(false);
+  
+  try {
+    // Verificar se é tentativa de login como admin
+    if (email === 'admin@condy.com') {
+      console.log("Tentativa de login como admin");
     }
-  };
+    
+    await login(email, password);
+    // A navegação é gerenciada pelo hook useAuth
+  } catch (error) {
+    let errorMsg = 'Falha ao fazer login. Tente novamente.';
+    
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+      errorMsg = 'Email ou senha incorretos';
+    } else if (error.code === 'auth/too-many-requests') {
+      errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
+    }
+    
+    console.error("Erro de login:", error.code, error.message);
+    setErrorMessage(errorMsg);
+    setShowError(true);
+  } finally {
+    setLoading(false);
+  }
+};
   
   // Recuperar senha
   const handleForgotPassword = () => {

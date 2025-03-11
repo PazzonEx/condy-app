@@ -18,20 +18,15 @@ import CondoReportScreen from '../screens/condo/CondoReportScreen';
 import CondoProfileScreen from '../screens/condo/CondoProfileScreen';
 import CondoSubscriptionPasswordScreen from '../screens/condo/CondoSubscriptionPasswordScreen';
 
-// Criar navegadores
 const Tab = createBottomTabNavigator();
-const HomeStack = createStackNavigator();
-const RequestsStack = createStackNavigator();
-const ResidentsStack = createStackNavigator();
-const SettingsStack = createStackNavigator();
+const Stack = createStackNavigator();
 
-
-// Stack para a aba Home
-const HomeStackNavigator = () => {
+// Stack para a aba Home (Portaria)
+const HomeStack = () => {
   const theme = useTheme();
   
   return (
-    <HomeStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -42,57 +37,24 @@ const HomeStackNavigator = () => {
         },
       }}
     >
-      <HomeStack.Screen 
-        name="CondoHome" 
-        component={CondoHomeScreen} 
-        options={{ title: 'Portaria' }}
-      />
-      <HomeStack.Screen 
-        name="CondoQRScanner" 
-        component={CondoQRScannerScreen} 
-        options={{ title: 'Escanear QR Code' }}
-      />
-      <HomeStack.Screen 
-        name="CondoAccessDetails" 
-        component={CondoAccessDetailsScreen} 
-        options={{ title: 'Detalhes do Acesso' }}
-      />
-      <HomeStack.Screen 
-        name="CondoDashboard" 
-        component={CondoDashboardScreen} 
-        options={{ title: 'Dashboard' }}
-      />
-      <HomeStack.Screen 
-        name="CondoReport" 
-        component={CondoReportScreen} 
-        options={{ title: 'Relatório Detalhado' }}
-      />
-      <HomeStack.Screen 
-        name="CondoSubscription" 
-        component={CondoSubscriptionScreen} 
-        options={{ title: 'Planos e Assinaturas' }}
-      />
-       <HomeStack.Screen 
-      name="CondoProfile" 
-      component={CondoProfileScreen} 
-      options={{ title: 'Perfil do Condomínio' }}
-    />
-    
-<HomeStack.Screen 
-  name="CondoSubscriptionPassword" 
-  component={CondoSubscriptionPasswordScreen} 
-  options={{ title: 'Senha de Administrador' }} 
-/>
-    </HomeStack.Navigator>
+      <Stack.Screen name="CondoHome" component={CondoHomeScreen} options={{ title: 'Portaria' }} />
+      <Stack.Screen name="CondoQRScanner" component={CondoQRScannerScreen} options={{ title: 'Escanear QR Code' }} />
+      <Stack.Screen name="CondoAccessDetails" component={CondoAccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+      <Stack.Screen name="CondoDashboard" component={CondoDashboardScreen} options={{ title: 'Dashboard' }} />
+      <Stack.Screen name="CondoReport" component={CondoReportScreen} options={{ title: 'Relatório Detalhado' }} />
+      <Stack.Screen name="CondoSubscription" component={CondoSubscriptionScreen} options={{ title: 'Planos e Assinaturas' }} />
+      <Stack.Screen name="CondoProfile" component={CondoProfileScreen} options={{ title: 'Perfil do Condomínio' }} />
+      <Stack.Screen name="CondoSubscriptionPassword" component={CondoSubscriptionPasswordScreen} options={{ title: 'Senha de Administrador' }} />
+    </Stack.Navigator>
   );
 };
 
 // Stack para a aba Solicitações
-const RequestsStackNavigator = () => {
+const RequestsStack = () => {
   const theme = useTheme();
   
   return (
-    <RequestsStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -103,31 +65,19 @@ const RequestsStackNavigator = () => {
         },
       }}
     >
-      <RequestsStack.Screen 
-        name="CondoRequests" 
-        component={CondoRequestsScreen} 
-        options={{ title: 'Solicitações' }}
-      />
-       <RequestsStack.Screen 
-        name="CondoQRScanner" 
-        component={CondoQRScannerScreen} 
-        options={{ title: 'Escanear QR Code' }}
-      />
-      <RequestsStack.Screen 
-        name="CondoAccessDetails" 
-        component={CondoAccessDetailsScreen} 
-        options={{ title: 'Detalhes do Acesso' }}
-      />
-    </RequestsStack.Navigator>
+      <Stack.Screen name="CondoRequests" component={CondoRequestsScreen} options={{ title: 'Solicitações' }} />
+      <Stack.Screen name="CondoQRScanner" component={CondoQRScannerScreen} options={{ title: 'Escanear QR Code' }} />
+      <Stack.Screen name="CondoAccessDetails" component={CondoAccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+    </Stack.Navigator>
   );
 };
 
 // Stack para a aba Moradores
-const ResidentsStackNavigator = () => {
+const ResidentsStack = () => {
   const theme = useTheme();
   
   return (
-    <ResidentsStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -138,21 +88,17 @@ const ResidentsStackNavigator = () => {
         },
       }}
     >
-      <ResidentsStack.Screen 
-        name="CondoResidents" 
-        component={CondoResidentsScreen} 
-        options={{ title: 'Moradores' }}
-      />
-    </ResidentsStack.Navigator>
+      <Stack.Screen name="CondoResidents" component={CondoResidentsScreen} options={{ title: 'Moradores' }} />
+    </Stack.Navigator>
   );
 };
 
 // Stack para a aba Configurações
-const SettingsStackNavigator = () => {
+const SettingsStack = () => {
   const theme = useTheme();
   
   return (
-    <SettingsStack.Navigator
+    <Stack.Navigator
       screenOptions={{
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -163,33 +109,15 @@ const SettingsStackNavigator = () => {
         },
       }}
     >
-      <SettingsStack.Screen 
-        name="CondoSettings" 
-        component={CondoSettingsScreen} 
-        options={{ title: 'Configurações' }}
-      />
-      <SettingsStack.Screen 
-        name="CondoSubscription" 
-        component={CondoSubscriptionScreen} 
-        options={{ title: 'Planos e Assinaturas' }}
-      />
-      
-      <SettingsStack.Screen 
-      name="CondoProfile" 
-      component={CondoProfileScreen} 
-      options={{ title: 'Perfil do Condomínio' }}
-    />
-            
-        <SettingsStack.Screen 
-          name="CondoSubscriptionPassword" 
-          component={CondoSubscriptionPasswordScreen} 
-          options={{ title: 'Senha de Administrador' }} 
-        />
-    </SettingsStack.Navigator>
+      <Stack.Screen name="CondoSettings" component={CondoSettingsScreen} options={{ title: 'Configurações' }} />
+      <Stack.Screen name="CondoSubscription" component={CondoSubscriptionScreen} options={{ title: 'Planos e Assinaturas' }} />
+      <Stack.Screen name="CondoProfile" component={CondoProfileScreen} options={{ title: 'Perfil do Condomínio' }} />
+      <Stack.Screen name="CondoSubscriptionPassword" component={CondoSubscriptionPasswordScreen} options={{ title: 'Senha de Administrador' }} />
+    </Stack.Navigator>
   );
 };
 
-// Navegador principal para condomínios (Tab Navigator)
+// Navegador principal para condomínios
 const CondoNavigator = () => {
   const theme = useTheme();
   
@@ -220,29 +148,13 @@ const CondoNavigator = () => {
         },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: 'gray',
-        headerShown: false,
+        headerShown: false, // Desativa o header no Tab Navigator
       })}
     >
-      <Tab.Screen 
-        name="Home" 
-        component={HomeStackNavigator} 
-        options={{ tabBarLabel: 'Portaria' }}
-      />
-      <Tab.Screen 
-        name="Requests" 
-        component={RequestsStackNavigator} 
-        options={{ tabBarLabel: 'Solicitações' }}
-      />
-      <Tab.Screen 
-        name="Residents" 
-        component={ResidentsStackNavigator} 
-        options={{ tabBarLabel: 'Moradores' }}
-      />
-      <Tab.Screen 
-        name="Settings" 
-        component={SettingsStackNavigator} 
-        options={{ tabBarLabel: 'Configurações' }}
-      />
+      <Tab.Screen name="Home" component={HomeStack} options={{ tabBarLabel: 'Portaria' }} />
+      <Tab.Screen name="Requests" component={RequestsStack} options={{ tabBarLabel: 'Solicitações' }} />
+      <Tab.Screen name="Residents" component={ResidentsStack} options={{ tabBarLabel: 'Moradores' }} />
+      <Tab.Screen name="Settings" component={SettingsStack} options={{ tabBarLabel: 'Configurações' }} />
     </Tab.Navigator>
   );
 };

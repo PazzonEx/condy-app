@@ -79,6 +79,9 @@ const RootNavigator = () => {
   const needsProfileCompletion = () => {
     // Se não tiver perfil, não precisa completar o cadastro
     if (!userProfile) return false;
+
+    // Caso especial para admin - nunca precisa completar perfil
+  if (userProfile.type === 'admin') return false;
     
     // Se o perfil não tiver a flag de completo
     return userProfile.profileComplete !== true;
