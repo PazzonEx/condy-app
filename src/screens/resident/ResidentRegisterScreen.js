@@ -48,7 +48,7 @@ const { width } = Dimensions.get('window');
 const ResidentRegisterScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
-  const { currentUser, userProfile, updateProfile, setUserProfile, cancelRegistration } = useAuth();  
+  const { currentUser, userProfile, updateProfile, setUserProfile, logout } = useAuth();  
   // Refs
   const scrollViewRef = useRef(null);
   

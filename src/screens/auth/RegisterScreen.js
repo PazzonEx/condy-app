@@ -267,7 +267,6 @@ const RegisterScreen = ({ route }) => {
       ]
     );
   };
-  
   const handleRegister = async () => {
     try {
       if (!validateUserPassword()) return;
@@ -279,42 +278,60 @@ const RegisterScreen = ({ route }) => {
       // Log para debugging
       console.log("Tentando registrar com tipo:", userType);
       
-     // Garantir que userType seja válido - NÃO forçar para 'resident'
-     if (!userType) {
-      console.warn("Tipo de usuário não definido na tela de registro. Verificando AsyncStorage...");
-      
-      // Tentar recuperar do AsyncStorage como backup
-      const storedType = await AsyncStorage.getItem('@user_type');
-      
-      if (storedType && ['resident', 'driver', 'condo', 'admin'].includes(storedType)) {
-        console.log("Usando tipo recuperado do AsyncStorage:", storedType);
-        // Usar tipo do AsyncStorage se disponível
-        const user = await register(email, password, name, storedType);
-        console.log("Registro bem-sucedido com tipo recuperado");
+      // Garantir que userType seja válido
+      if (!userType) {
+        console.warn("Tipo de usuário não definido na tela de registro. Verificando AsyncStorage...");
+        
+        // Tentar recuperar do AsyncStorage como backup
+        const storedType = await AsyncStorage.getItem('@user_type');
+        
+        if (storedType && ['resident', 'driver', 'condo', 'admin'].includes(storedType)) {
+          console.log("Usando tipo recuperado do AsyncStorage:", storedType);
+          // Usar tipo do AsyncStorage se disponível
+          await register(email, password, name, storedType);
+          console.log("Registro bem-sucedido com tipo recuperado");
+        } else {
+          // Alerta ao usuário se não conseguirmos determinar o tipo
+          setError("Não foi possível determinar o tipo de usuário. Por favor, volte e selecione novamente.");
+          setShowError(true);
+          setLoading(false);
+          return;
+        }
       } else {
-        // Alerta ao usuário se não conseguirmos determinar o tipo
-        setError("Não foi possível determinar o tipo de usuário. Por favor, volte e selecione novamente.");
-        setShowError(true);
-        setLoading(false);
-        return;
+        // Usar o tipo que já está definido
+        console.log("Registrando com tipo:", userType);
+        await register(email, password, name, userType);
+        console.log("Registro bem-sucedido com tipo:", userType);
       }
-    } else {
-      // Usar o tipo que já está definido (a abordagem correta na maioria dos casos)
-      console.log("Registrando com tipo:", userType);
-      const user = await register(email, password, name, userType);
-      console.log("Registro bem-sucedido com tipo:", userType);
-    }
       
-      // Armazenar no AsyncStorage também como backup
-      await AsyncStorage.setItem('@user_type', typeToUse);
-      
-      // Passar explicitamente o tipo de usuário para a função register
-      const user = await register(email, password, name, typeToUse);
-      console.log("Registro bem-sucedido, navegando...");
-      
-      // Resto do código...
+      // Redirecionar para a tela apropriada após o registro
+      // Isso acontecerá automaticamente pelo RootNavigator
     } catch (error) {
-      // Tratamento de erro...
+      console.error("Erro no registro:", error);
+      
+      // Exibir mensagem específica para email já em uso
+      if (error.code === 'auth/email-already-in-use') {
+        Alert.alert(
+          "Email já cadastrado",
+          "Este email já está sendo usado por outra conta. Por favor, use um email diferente ou tente fazer login.",
+          [
+            { 
+              text: "Ir para login", 
+              onPress: () => navigation.navigate('Login', { email })
+            },
+            {
+              text: "Tentar novamente",
+              style: "cancel"
+            }
+          ]
+        );
+      } else {
+        // Para outros erros, exibir mensagem padrão
+        setError(error.message || 'Erro ao criar conta. Tente novamente.');
+        setShowError(true);
+      }
+    } finally {
+      setLoading(false);
     }
   };
   

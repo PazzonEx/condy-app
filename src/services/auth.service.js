@@ -16,40 +16,50 @@ import FirestoreService from "./firestore.service"
 const AuthService = {
   // Registrar um novo usuário
   // Modifique a função register em src/services/auth.service.js
+// Em src/services/auth.service.js
 async register(email, password, displayName, userType) {
   try {
     console.log(`AuthService.register chamado com: email=${email}, displayName=${displayName}, userType=${userType}`);
 
     // Registrar usuário no Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Verificação adicional
-      if (!userCredential || !userCredential.user) {
-        console.error("Falha na criação do usuário - objeto userCredential:", userCredential);
+    
+    // Verificação extra para garantir que temos um objeto userCredential válido
+    if (!userCredential) {
+      console.error("Falha na criação do usuário - objeto userCredential não retornado");
+      // Em vez de lançar erro, vamos tentar obter o usuário atual
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        // Se tivermos o usuário atual, use-o em vez de falhar
+        console.log("Usando auth.currentUser como fallback");
+        
+        // Atualizar o perfil com nome de exibição
+        if (displayName) {
+          await updateProfile(currentUser, { displayName });
+        }
+        
+        return { user: currentUser }; // Retornar em formato compatível
+      } else {
         throw new Error('Falha ao criar usuário no Firebase Auth');
       }
+    }
     
     const user = userCredential.user;
 
-      // Verificação adicional
-    if (!userCredential || !userCredential.user) {
-      console.error("Falha na criação do usuário - objeto userCredential:", userCredential);
-      throw new Error('Falha ao criar usuário no Firebase Auth');
-    }
-    
-    // Verificar se o user existe antes de prosseguir
+    // Verificação adicional
     if (!user) {
-      throw new Error('Falha na criação do usuário');
+      console.error("Usuário criado mas não retornado corretamente");
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        return { user: currentUser }; // Fallback para usuário atual
+      }
+      throw new Error('Falha na criação do usuário - objeto user não disponível');
     }
-
     
     // Garantir que temos um tipo de usuário válido
     if (!userType || !['resident', 'driver', 'condo', 'admin'].includes(userType)) {
       console.warn(`Tipo de usuário inválido ou não especificado: ${userType}, usando 'resident' como padrão`);
       userType = 'resident';
-    }
-    if (!userCredential || !userCredential.user) {
-      console.error("Falha na criação do usuário - objeto userCredential:", userCredential);
-      throw new Error('Falha ao criar usuário no Firebase Auth');
     }
     
     // Atualizar o perfil com nome de exibição
@@ -61,7 +71,7 @@ async register(email, password, displayName, userType) {
     await FirestoreService.createDocumentWithId('users', user.uid, {
       email,
       displayName,
-      type: userType, // Garantir que estamos usando o tipo correto
+      type: userType,
       status: 'pending_verification',
       createdAt: new Date(),
       updatedAt: new Date()
@@ -78,7 +88,7 @@ async register(email, password, displayName, userType) {
     });
     
     console.log(`Usuário registrado com sucesso. Tipo: ${userType}, ID: ${user.uid}`);
-    return user;
+    return { user }; // Retornar objeto com user para manter consistência
   } catch (error) {
     console.error('Erro detalhado ao registrar usuário:', error);
     throw error;

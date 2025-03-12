@@ -1,5 +1,5 @@
 // src/navigation/index.js
-import React, { useEffect } from 'react';
+import React, { useEffect,useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useTheme } from 'react-native-paper';
@@ -27,6 +27,8 @@ import AdminNavigator from './AdminNavigator';
 // Telas de espera/aprovação
 import PendingApprovalScreen from '../screens/shared/PendingApprovalScreen';
 import LoadingOverlay from '../components/LoadingOverlay';
+import FirestoreService from '../services/firestore.service';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Stack = createStackNavigator();
 
@@ -86,6 +88,7 @@ const RootNavigator = () => {
     // Se o perfil não tiver a flag de completo
     return userProfile.profileComplete !== true;
   };
+  const redirectionInProgress = useRef(false);
   
   // Função para verificar se o usuário está em espera de aprovação
   const needsApproval = () => {
@@ -116,11 +119,38 @@ const RootNavigator = () => {
         return false;
     }
   };
-  useEffect(() => {
-    if (currentUser && !loading) {
-      reloadUserProfile();
-    }
-  }, [currentUser, loading]);
+  
+
+  // Em src/navigation/index.js
+// No componente RootNavigator, adicione:
+
+useEffect(() => {
+  if (currentUser && !loading && !redirectionInProgress.current) {
+    const checkProfile = async () => {
+      try {
+        // Marcar que o redirecionamento está em andamento para evitar loops
+        redirectionInProgress.current = true;
+        
+        // Verificar perfil uma vez e usar o resultado
+        await reloadUserProfile();
+        console.log("Perfil verificado, aguardando navegação...");
+        
+        // Desmarcar após 1 segundo para evitar execução imediata
+        setTimeout(() => {
+          redirectionInProgress.current = false;
+        }, 1000);
+      } catch (error) {
+        console.error("Erro ao verificar perfil:", error);
+        // Desmarcar em caso de erro
+        redirectionInProgress.current = false;
+      }
+    };
+    
+    checkProfile();
+  }
+}, [currentUser, loading]);
+
+
   useEffect(() => {
     if (currentUser && userProfile) {
       console.log("Estado do usuário - UID:", currentUser.uid);
