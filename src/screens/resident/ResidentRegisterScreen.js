@@ -197,19 +197,20 @@ const ResidentRegisterScreen = () => {
     let stepErrors = {};
     let isValid = true;
     
-    if (step === 1) {
-      // Validar dados pessoais
-      if (!residentData.name.trim()) {
-        stepErrors.name = 'Nome é obrigatório';
-        isValid = false;
-      }
-      const cleanCPF = residentData.cpf.replace(/\D/g, '');
-    console.log("CPF limpo para validação:", cleanCPF); // Log para debug
     
-    if (!isValidCPF(cleanCPF)) {
-      stepErrors.cpf = 'CPF inválido';
-      isValid = false;
-    }
+     if (step === 1) {
+  // Validar dados pessoais
+  if (!residentData.name.trim()) {
+    stepErrors.name = 'Nome é obrigatório';
+    isValid = false;
+  }
+  
+  // Usar apenas a função isValidCPF para validação
+  const cleanCPF = residentData.cpf.replace(/\D/g, '');
+  if (!isValidCPF(cleanCPF)) {
+    stepErrors.cpf = 'CPF inválido';
+    isValid = false;
+  }
       
       if (!residentData.cpf || residentData.cpf.replace(/\D/g, '').length !== 11) {
         stepErrors.cpf = 'CPF inválido';
@@ -320,58 +321,33 @@ const handleCancel = () => {
     "Cancelar Cadastro",
     "Tem certeza que deseja cancelar o cadastro? Esta ação não pode ser desfeita.",
     [
-      {
-        text: "Não",
-        style: "cancel"
-      },
+      { text: "Não", style: "cancel" },
       {
         text: "Sim, cancelar",
         onPress: async () => {
           setLoading(true);
           try {
-            // Alternativa mais simples que não depende de autenticação recente
             if (currentUser) {
-              // 1. Tentar excluir documentos do Firestore
-              const userType = 'resident'; // ou 'driver' ou 'condo' dependendo da tela
-              
-              // Excluir documento específico do tipo
-              try {
-                await FirestoreService.deleteDocument(userType + 's', currentUser.uid);
-              } catch (e) {
-                console.log('Erro ao excluir documento específico:', e);
+              // Remover documentos que foram enviados ao Storage
+              if (residentData.documents) {
+                // Você poderia implementar uma função para apagar arquivos do Storage
+                // por exemplo: await StorageService.deleteUserFiles(currentUser.uid);
               }
               
-              // Excluir documento de usuário
-              try {
-                await FirestoreService.deleteDocument('users', currentUser.uid);
-              } catch (e) {
-                console.log('Erro ao excluir documento de usuário:', e);
-              }
+              // Usar a função do hook de autenticação para cancelar o registro
+              await cancelRegistration('resident');
               
-              // 2. Fazer logout
-              await logout();
-            }
-            
-            // 3. Voltar para tela inicial
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }]
-            });
-          } catch (error) {
-            console.error("Erro ao cancelar cadastro:", error);
-            setError("Erro ao cancelar cadastro. Tente novamente.");
-            setShowError(true);
-            
-            // Mesmo com erro, tentar voltar para o login
-            try {
-              await logout();
+              // Navegar para a tela de login
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }]
               });
-            } catch (e) {
-              setLoading(false);
             }
+          } catch (error) {
+            console.error("Erro ao cancelar cadastro:", error);
+            setError("Erro ao cancelar cadastro. Tente novamente.");
+            setShowError(true);
+            setLoading(false);
           }
         }
       }
@@ -415,7 +391,6 @@ const handleCancel = () => {
     }
   };
   
-  // Enviar formulário
   const submitForm = async () => {
     try {
       setLoading(true);
@@ -424,22 +399,27 @@ const handleCancel = () => {
         throw new Error('Usuário não autenticado');
       }
       
-      // Preparar dados para envio
+      // Preparar dados para envio no formato esperado pelo Firestore
       const residentProfileData = {
-        personalData: {
-          name: residentData.name,
-          cpf: residentData.cpf.replace(/\D/g, ''),
-          phone: residentData.phone.replace(/\D/g, ''),
-          email: residentData.email
-        },
-        residenceData: {
-          condoId: residentData.condoId,
-          condoName: residentData.condoName,
-          block: residentData.block,
-          unit: residentData.unit
-        },
+        // Dados pessoais
+        name: residentData.name,
+        cpf: residentData.cpf.replace(/\D/g, ''),
+        phone: residentData.phone.replace(/\D/g, ''),
+        email: residentData.email,
+        
+        // Dados de residência
+        condoId: residentData.condoId,
+        condoName: residentData.condoName,
+        block: residentData.block,
+        unit: residentData.unit,
+        
+        // Documentos
         documents: residentData.documents,
+        
+        // Preferências
         notificationPreferences: residentData.notificationPreferences,
+        
+        // Metadados
         status: 'pending_verification',
         verificationStatus: 'pending',
         profileComplete: true,
@@ -450,14 +430,22 @@ const handleCancel = () => {
       // Atualizar documento do morador no Firestore
       await FirestoreService.updateDocument('residents', currentUser.uid, residentProfileData);
       
-      // Atualizar perfil geral
+      // Atualizar perfil geral (auth)
       await updateProfile({
         displayName: residentData.name,
         profileComplete: true,
         status: 'pending_verification'
       });
       
-      // Forçar uma atualização no perfil do usuário
+      // Também atualizar o documento de usuário para consistência
+      await FirestoreService.updateDocument('users', currentUser.uid, {
+        displayName: residentData.name,
+        profileComplete: true,
+        status: 'pending_verification',
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Atualizar o estado do contexto de autenticação
       const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
       setUserProfile({
         ...userProfile,
@@ -466,14 +454,11 @@ const handleCancel = () => {
         status: 'pending_verification'
       });
       
-      // Mostrar mensagem de sucesso
+      // Mostrar mensagem de sucesso e navegar
       Alert.alert(
         'Cadastro Enviado',
         'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação do seu condomínio.',
-        [{ 
-          text: 'OK', 
-         
-        }]
+        [{ text: 'OK' }] // Remova a navegação explícita
       );
     } catch (error) {
       console.error('Erro ao enviar formulário:', error);

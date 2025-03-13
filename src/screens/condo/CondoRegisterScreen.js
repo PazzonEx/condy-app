@@ -248,92 +248,97 @@ const updateCondoData = (field, value) => {
   };
   
   // Validar etapa atual
-const validateStep = () => {
-  let stepErrors = {};
-  let isValid = true;
-  
-  if (step === 1) {
-    // Validar dados básicos (sem o nome)
-    const cleanCNPJ = condoData.cnpj.replace(/\D/g, '');
-    if (!isValidCNPJ(cleanCNPJ)) {
-      stepErrors.cnpj = 'CNPJ inválido';
-      isValid = false;
+  const validateStep = () => {
+    let stepErrors = {};
+    let isValid = true;
+    
+    if (step === 1) {
+      // Validar dados básicos (sem o nome)
+      const cleanCNPJ = condoData.cnpj.replace(/\D/g, '');
+      if (!isValidCNPJ(cleanCNPJ)) {
+        stepErrors.cnpj = 'CNPJ inválido';
+        isValid = false;
+      }
+      
+      if (!condoData.phone || condoData.phone.replace(/\D/g, '').length < 10) {
+        stepErrors.phone = 'Telefone inválido';
+        isValid = false;
+      }
+      
+      if (!condoData.email || !isValidEmail(condoData.email)) {
+        stepErrors.email = 'Email inválido';
+        isValid = false;
+      }
+    } else if (step === 2) {
+      // Validar endereço e informações do condomínio
+      if (!condoData.name.trim()) {
+        stepErrors.name = 'Nome do condomínio é obrigatório';
+        isValid = false;
+      }
+      
+      if (!condoData.address.trim()) {
+        stepErrors.address = 'Endereço do condomínio é obrigatório';
+        isValid = false;
+      }
+      
+      if (!condoData.addressDetails.street.trim()) {
+        stepErrors['addressDetails.street'] = 'Rua é obrigatória';
+        isValid = false;
+      }
+      
+      if (!condoData.addressDetails.number.trim()) {
+        stepErrors['addressDetails.number'] = 'Número é obrigatório';
+        isValid = false;
+      }
+      
+      if (!condoData.addressDetails.city.trim()) {
+        stepErrors['addressDetails.city'] = 'Cidade é obrigatória';
+        isValid = false;
+      }
+      
+      // Validar informações do condomínio
+      if (!condoData.condoInfo.blocks.trim()) {
+        stepErrors['condoInfo.blocks'] = 'Número de blocos é obrigatório';
+        isValid = false;
+      }
+      
+      if (!condoData.condoInfo.units.trim()) {
+        stepErrors['condoInfo.units'] = 'Número de unidades é obrigatório';
+        isValid = false;
+      }
+    } else if (step === 3) {
+      // Validar dados administrativos
+      if (!condoData.adminName.trim()) {
+        stepErrors.adminName = 'Nome do administrador é obrigatório';
+        isValid = false;
+      }
+      
+      if (!condoData.adminPhone || condoData.adminPhone.replace(/\D/g, '').length < 10) {
+        stepErrors.adminPhone = 'Telefone do administrador inválido';
+        isValid = false;
+      }
+      
+      if (!condoData.adminEmail || !isValidEmail(condoData.adminEmail)) {
+        stepErrors.adminEmail = 'Email do administrador inválido';
+        isValid = false;
+      }
+    } else if (step === 4) {
+      // Validar plano de assinatura
+      if (!condoData.selectedPlan) {
+        stepErrors.selectedPlan = 'Selecione um plano';
+        isValid = false;
+      }
+    } else if (step === 5) {
+      // Validar documentos
+      if (!condoData.documents.condoRegistration || condoData.documents.condoRegistration.length === 0) {
+        stepErrors['documents.condoRegistration'] = 'Documento de registro do condomínio é obrigatório';
+        isValid = false;
+      }
     }
     
-    if (!condoData.phone || condoData.phone.replace(/\D/g, '').length < 10) {
-      stepErrors.phone = 'Telefone inválido';
-      isValid = false;
-    }
-    
-    if (!condoData.email || !isValidEmail(condoData.email)) {
-      stepErrors.email = 'Email inválido';
-      isValid = false;
-    }
-  } else if (step === 2) {
-    // Validar endereço e informações do condomínio
-    if (!condoData.name.trim()) {
-      stepErrors.name = 'Nome do condomínio é obrigatório';
-      isValid = false;
-    }
-    
-    if (!condoData.address.trim()) {
-      stepErrors.address = 'Endereço do condomínio é obrigatório';
-      isValid = false;
-    }
-    
-    if (!condoData.addressDetails.street.trim()) {
-      stepErrors['addressDetails.street'] = 'Rua é obrigatória';
-      isValid = false;
-    }
-    
-    if (!condoData.addressDetails.number.trim()) {
-      stepErrors['addressDetails.number'] = 'Número é obrigatório';
-      isValid = false;
-    }
-    
-    if (!condoData.addressDetails.city.trim()) {
-      stepErrors['addressDetails.city'] = 'Cidade é obrigatória';
-      isValid = false;
-    }
-    
-    // Validar informações do condomínio
-    if (!condoData.condoInfo.blocks.trim()) {
-      stepErrors['condoInfo.blocks'] = 'Número de blocos é obrigatório';
-      isValid = false;
-    }
-    
-    if (!condoData.condoInfo.units.trim()) {
-      stepErrors['condoInfo.units'] = 'Número de unidades é obrigatório';
-      isValid = false;
-    }
-  } else if (step === 3) {
-    // Validar dados administrativos
-    if (!condoData.adminName.trim()) {
-      stepErrors.adminName = 'Nome do administrador é obrigatório';
-      isValid = false;
-    }
-    
-    if (!condoData.adminPhone || condoData.adminPhone.replace(/\D/g, '').length < 10) {
-      stepErrors.adminPhone = 'Telefone do administrador inválido';
-      isValid = false;
-    }
-    
-    if (!condoData.adminEmail || !isValidEmail(condoData.adminEmail)) {
-      stepErrors.adminEmail = 'Email do administrador inválido';
-      isValid = false;
-    }
-  } else if (step === 5) {
-    // Validar documentos
-    if (!condoData.documents.condoRegistration || condoData.documents.condoRegistration.length === 0) {
-      stepErrors['documents.condoRegistration'] = 'Documento de registro do condomínio é obrigatório';
-      isValid = false;
-    }
-  }
-  
-  setErrors(stepErrors);
-  return isValid;
-};
-  
+    setErrors(stepErrors);
+    return isValid;
+  };
   // Avançar para próxima etapa
   const nextStep = () => {
     if (validateStep()) {
@@ -499,6 +504,9 @@ const submitForm = async () => {
       throw new Error('Usuário não autenticado');
     }
     
+    // Processar uploads de documentos
+    const uploadedDocuments = await processDocumentUploads();
+    
     // Preparar dados para envio
     const condoProfileData = {
       // Dados básicos
@@ -510,25 +518,31 @@ const submitForm = async () => {
       // Endereço
       address: condoData.address,
       addressDetails: condoData.addressDetails,
+      placeId: condoData.placeId || '',
       
       // Informações do condomínio
       condoInfo: {
-        blocks: Number(condoData.condoInfo.blocks),
-        units: Number(condoData.condoInfo.units),
+        blocks: parseInt(condoData.condoInfo.blocks) || 0,
+        units: parseInt(condoData.condoInfo.units) || 0,
       },
       
       // Dados administrativos
       adminInfo: {
         name: condoData.adminName,
-        phone: condoData.adminPhone,
+        phone: condoData.adminPhone.replace(/\D/g, ''),
         email: condoData.adminEmail
       },
       
       // Plano e assinatura
-      plan: condoData.selectedPlan,
+      subscription: {
+        plan: condoData.selectedPlan,
+        status: 'pending',
+        startDate: null,
+        endDate: null
+      },
       
       // Documentos
-      documents: condoData.documents,
+      documents: uploadedDocuments,
       
       // Status e metadados
       status: 'pending_verification',
@@ -541,14 +555,22 @@ const submitForm = async () => {
     // Atualizar documento do condomínio no Firestore
     await FirestoreService.updateDocument('condos', currentUser.uid, condoProfileData);
     
-    // Atualizar perfil geral
+    // Atualizar perfil de usuário
     await updateProfile({
       displayName: condoData.name,
       profileComplete: true,
       status: 'pending_verification'
     });
     
-    // Forçar uma atualização no perfil do usuário
+    // Atualizar documento de usuário para consistência
+    await FirestoreService.updateDocument('users', currentUser.uid, {
+      displayName: condoData.name,
+      profileComplete: true,
+      status: 'pending_verification',
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Atualizar o estado do contexto de autenticação
     const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
     setUserProfile({
       ...userProfile,
@@ -561,9 +583,7 @@ const submitForm = async () => {
     Alert.alert(
       'Cadastro Enviado',
       'As informações do condomínio foram enviadas e estão em análise. Você receberá uma notificação quando o cadastro for aprovado.',
-      [{ 
-        text: 'OK'
-      }]
+      [{ text: 'OK', onPress: () => navigation.navigate('CondoHome') }]
     );
   } catch (error) {
     console.error('Erro ao enviar formulário:', error);
@@ -573,7 +593,52 @@ const submitForm = async () => {
     setLoading(false);
   }
 };
+
+// Função auxiliar para processar uploads de documentos
+const processDocumentUploads = async () => {
+  // Similar à implementação para DriverRegisterScreen
+  const uploadPromises = [];
+  const documentPaths = {};
   
+  for (const docType in condoData.documents) {
+    if (condoData.documents[docType] && condoData.documents[docType].length > 0) {
+      const docs = condoData.documents[docType];
+      documentPaths[docType] = [];
+      
+      for (const doc of docs) {
+        // Documento já enviado
+        if (doc.url) {
+          documentPaths[docType].push({
+            path: doc.path,
+            url: doc.url,
+            type: doc.type || 'image/jpeg',
+            name: doc.name || 'documento'
+          });
+          continue;
+        }
+        
+        // Novo documento
+        if (doc.uri) {
+          const path = `documents/${currentUser.uid}/${docType}_${Date.now()}`;
+          const uploadPromise = StorageService.uploadFile(path, doc.uri)
+            .then(result => {
+              documentPaths[docType].push({
+                path: result.path,
+                url: result.url,
+                type: doc.type || 'image/jpeg',
+                name: doc.name || 'documento'
+              });
+            });
+          
+          uploadPromises.push(uploadPromise);
+        }
+      }
+    }
+  }
+  
+  await Promise.all(uploadPromises);
+  return documentPaths;
+};
   // Obter título da etapa atual
   const getStepTitle = () => {
     switch (step) {
@@ -1074,7 +1139,7 @@ const renderStep2 = () => (
                       <Text style={styles.planBadgeText}>Recomendado</Text>
                     </View>
                   )}
-                  
+                                  
                   <Text style={styles.planTitle}>{plan.name}</Text>
                   <Text style={styles.planPrice}>
                     {plan.price === 0 ? 'Gratuito' : `R$ ${plan.price.toFixed(2)}`}
@@ -1096,9 +1161,12 @@ const renderStep2 = () => (
                     ))}
                   </View>
                 </Card.Content>
-              </Card>
-            </TouchableOpacity>
+              </Card>  
+              {errors.selectedPlan && <Text style={styles.errorText}>{errors.selectedPlan}</Text>}            
+            </TouchableOpacity>     
+                   
           ))}
+          
         </ScrollView>
       )}
       

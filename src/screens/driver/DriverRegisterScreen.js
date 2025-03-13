@@ -128,75 +128,70 @@ const getStepTitle = () => {
   // Erros de validação
   const [errors, setErrors] = useState({});
   
-  // ... outras constantes para apps, tipos de CNH, etc. ...
+
   
   // Função para cancelar o cadastro e sair
- // Atualizar apenas a função handleCancel em src/screens/driver/DriverRegisterScreen.js
-
-// Função simplificada para cancelar o cadastro e sair
-const handleCancel = () => {
-  Alert.alert(
-    "Cancelar Cadastro",
-    "Tem certeza que deseja cancelar o cadastro? Esta ação não pode ser desfeita.",
-    [
-      {
-        text: "Não",
-        style: "cancel"
-      },
-      {
-        text: "Sim, cancelar",
-        onPress: async () => {
-          setLoading(true);
-          try {
-            // Alternativa mais simples que não depende de autenticação recente
-            if (currentUser) {
-              // 1. Tentar excluir documentos do Firestore
-              const userType = 'driver'; // ou 'driver' ou 'condo' dependendo da tela
-              
-              // Excluir documento específico do tipo
-              try {
-                await FirestoreService.deleteDocument(userType + 's', currentUser.uid);
-              } catch (e) {
-                console.log('Erro ao excluir documento específico:', e);
-              }
-              
-              // Excluir documento de usuário
-              try {
-                await FirestoreService.deleteDocument('users', currentUser.uid);
-              } catch (e) {
-                console.log('Erro ao excluir documento de usuário:', e);
-              }
-              
-              // 2. Fazer logout
-              await logout();
-            }
-            
-            // 3. Voltar para tela inicial
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }]
-            });
-          } catch (error) {
-            console.error("Erro ao cancelar cadastro:", error);
-            setError("Erro ao cancelar cadastro. Tente novamente.");
-            setShowError(true);
-            
-            // Mesmo com erro, tentar voltar para o login
+  const handleCancel = () => {
+    Alert.alert(
+      "Cancelar Cadastro",
+      "Tem certeza que deseja cancelar o cadastro? Esta ação não pode ser desfeita.",
+      [
+        { text: "Não", style: "cancel" },
+        {
+          text: "Sim, cancelar",
+          onPress: async () => {
+            setLoading(true);
             try {
-              await logout();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }]
-              });
-            } catch (e) {
-              setLoading(false);
+              if (currentUser) {
+                // Remover documentos que foram enviados ao Storage
+                try {
+                  // Verificar se existem documentos para remover
+                  for (const docType in driverData.documents) {
+                    const docs = driverData.documents[docType];
+                    if (docs && docs.length > 0) {
+                      for (const doc of docs) {
+                        if (doc.path) {
+                          // Remover arquivo do Storage
+                          await StorageService.deleteFile(doc.path);
+                        }
+                      }
+                    }
+                  }
+                } catch (storageError) {
+                  console.error("Erro ao remover arquivos:", storageError);
+                  // Continuar mesmo com erro
+                }
+                
+                // Usar a função do hook de autenticação para cancelar o registro
+                await cancelRegistration('driver');
+                
+                // Navegar para a tela de login
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }]
+                });
+              }
+            } catch (error) {
+              console.error("Erro ao cancelar cadastro:", error);
+              setError("Erro ao cancelar cadastro. Tente novamente.");
+              setShowError(true);
+              
+              // Mesmo com erro, tentar voltar para o login
+              try {
+                await logout();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }]
+                });
+              } catch (e) {
+                setLoading(false);
+              }
             }
           }
         }
-      }
-    ]
-  );
-};
+      ]
+    );
+  };
 // Em src/screens/driver/DriverRegisterScreen.js
 
 // Na renderização dos inputs, usar máscaras dos utils
@@ -349,18 +344,36 @@ const validateStep = () => {
       }
       break;
     
-    case 3:
-      // Validar dados do veículo
-      if (!driverData.vehiclePlate.trim()) {
-        stepErrors.vehiclePlate = 'Placa do veículo é obrigatória';
-        isValid = false;
-      }
-      
-      if (!driverData.vehicleModel.trim()) {
-        stepErrors.vehicleModel = 'Modelo do veículo é obrigatório';
-        isValid = false;
-      }
-      break;
+      case 3:
+        // Validar dados do veículo
+        if (!driverData.vehiclePlate.trim()) {
+          stepErrors.vehiclePlate = 'Placa do veículo é obrigatória';
+          isValid = false;
+        } else {
+          // Remover caracteres não alfanuméricos
+          const cleanedPlate = driverData.vehiclePlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+          
+          // Validar formato da placa (padrão tradicional AAA1234 ou Mercosul AAA1A23)
+          const validPlateFormat = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$|^[A-Z]{3}[0-9]{4}$/;
+          
+          if (!validPlateFormat.test(cleanedPlate)) {
+            stepErrors.vehiclePlate = 'Formato de placa inválido';
+            isValid = false;
+          }
+        }
+        
+        if (!driverData.vehicleModel.trim()) {
+          stepErrors.vehicleModel = 'Modelo do veículo é obrigatório';
+          isValid = false;
+        }
+        
+        // Validações adicionais (opcionais)
+        if (driverData.vehicleYear && !/^\d{4}$/.test(driverData.vehicleYear)) {
+          stepErrors.vehicleYear = 'Ano do veículo inválido';
+          isValid = false;
+        }
+        
+        break;
     
     case 4:
       // Validar documentos
@@ -380,6 +393,7 @@ const validateStep = () => {
   return isValid;
 };
 
+
 // Adicionar função para rolar para o topo
 const scrollToTop = () => {
   if (scrollViewRef.current) {
@@ -390,8 +404,7 @@ const scrollToTop = () => {
     }
   }
 };
-
-// Adicionar função de envio do formulário
+// Função auxiliar para processar uploads de documentos do motorista
 const submitForm = async () => {
   try {
     setLoading(true);
@@ -399,35 +412,44 @@ const submitForm = async () => {
     if (!currentUser) {
       throw new Error('Usuário não autenticado');
     }
-    await updateProfile({
-      displayName: driverData.name,
-      profileComplete: true, // Definir como true após completar o registro
-      status: 'pending_verification'
-    });
+    
+    // Processar uploads de documentos
+    console.log('Iniciando upload de documentos...');
+    const uploadedDocuments = await processDocumentUploads();
+    console.log('Uploads concluídos:', uploadedDocuments);
     
     // Preparar dados para envio
     const driverProfileData = {
-      personalData: {
-        name: driverData.name,
-        cpf: driverData.cpf.replace(/\D/g, ''),
-        phone: driverData.phone.replace(/\D/g, ''),
-      },
+      // Dados pessoais
+      name: driverData.name,
+      cpf: driverData.cpf.replace(/\D/g, ''),
+      phone: driverData.phone.replace(/\D/g, ''),
+      
+      // Dados de habilitação
       licenseData: {
-        cnh: driverData.cnh,
+        cnh: driverData.cnh.replace(/\D/g, ''),
         cnhType: driverData.cnhType
       },
+      
+      // Dados do veículo
       vehicleData: {
-        make: driverData.vehicleMake,
+        make: driverData.vehicleMake || '',
         model: driverData.vehicleModel,
-        year: driverData.vehicleYear,
-        color: driverData.vehicleColor,
-        plate: driverData.vehiclePlate
+        year: driverData.vehicleYear || '',
+        color: driverData.vehicleColor || '',
+        plate: driverData.vehiclePlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
       },
-      documents: driverData.documents,
+      
+      // Documentos processados
+      documents: uploadedDocuments,
+      
+      // Serviços
       servicePreferences: {
-        appServices: driverData.appServices,
-        workSchedule: driverData.workSchedule
+        appServices: driverData.appServices || [],
+        workSchedule: driverData.workSchedule || []
       },
+      
+      // Metadados e status
       status: 'pending_verification',
       verificationStatus: 'pending',
       profileComplete: true,
@@ -458,10 +480,7 @@ const submitForm = async () => {
     Alert.alert(
       'Cadastro Enviado',
       'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação.',
-      [{ 
-        text: 'OK', 
-        
-      }]
+      [{ text: 'OK' }] // Removido o navigate para evitar erros
     );
   } catch (error) {
     console.error('Erro ao enviar formulário:', error);

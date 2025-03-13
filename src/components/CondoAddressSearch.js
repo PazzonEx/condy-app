@@ -202,128 +202,48 @@ const searchPlaces = async (query) => {
   };
 
 // Selecionar um endereço
-const handleSelectAddress = async (item) => {
-  // Verificação de segurança
-  if (!item || !item.placeId) {
-    console.error('Item de endereço inválido:', item);
-    return;
-  }
-  
-  setLoading(true);
-  
-  try {
-    // Obter detalhes completos do endereço selecionado
-    const addressDetails = await getPlaceDetails(item.placeId);
+const handleSelectAddress = (addressData) => {
+  if (addressData) {
+    console.log("Endereço selecionado:", addressData);
     
-    // Verificar se o condomínio já existe no sistema
-    let existingCondo = null;
+    // Verificar se já existe um condomínio cadastrado neste endereço
+    if (addressData.existingCondo) {
+      Alert.alert(
+        "Condomínio já cadastrado",
+        "Este condomínio já está cadastrado em nosso sistema. Por favor, entre em contato com a administração.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
     
-    // Buscar por placeId primeiro (mais preciso)
-    if (item.placeId) {
-      const condosByPlaceId = await FirestoreService.queryDocuments('condos', [
-        { field: 'placeId', operator: '==', value: item.placeId }
-      ]);
+    // Resetar campos para evitar dados antigos
+    const resetAddressFields = () => {
+      // Atualizar os campos com os novos dados
+      updateCondoData('address', addressData.formattedAddress || '');
+      updateCondoData('name', addressData.name || addressData.suggestedName || '');
       
-      if (condosByPlaceId && condosByPlaceId.length > 0) {
-        existingCondo = condosByPlaceId[0];
-      }
-    }
-    
-    // Se não encontrou por placeId, tentar por coordenadas
-    if (!existingCondo && addressDetails?.latitude && addressDetails?.longitude) {
-      // Buscar condomínios com coordenadas similares (margem de erro pequena)
-      const latPrecision = 0.0001; // Aproximadamente 10 metros
-      const lonPrecision = 0.0001;
+      // Atualizar detalhes do endereço
+      updateCondoData('addressDetails.street', addressData.street || '');
+      updateCondoData('addressDetails.number', addressData.number || '');
+      updateCondoData('addressDetails.neighborhood', addressData.neighborhood || '');
+      updateCondoData('addressDetails.city', addressData.city || '');
+      updateCondoData('addressDetails.state', addressData.state || '');
+      updateCondoData('addressDetails.postalCode', addressData.postalCode || '');
       
-      const condosByLocation = await FirestoreService.queryDocuments('condos', [
-        { field: 'address.latitude', operator: '>=', value: addressDetails.latitude - latPrecision },
-        { field: 'address.latitude', operator: '<=', value: addressDetails.latitude + latPrecision },
-        { field: 'address.longitude', operator: '>=', value: addressDetails.longitude - lonPrecision },
-        { field: 'address.longitude', operator: '<=', value: addressDetails.longitude + lonPrecision }
-      ]);
+      // Atualizar coordenadas
+      if (addressData.latitude && addressData.longitude) {
+        updateCondoData('addressDetails.latitude', addressData.latitude);
+        updateCondoData('addressDetails.longitude', addressData.longitude);
+      }
       
-      if (condosByLocation && condosByLocation.length > 0) {
-        existingCondo = condosByLocation[0];
+      // Armazenar placeId para referência
+      if (addressData.placeId) {
+        updateCondoData('placeId', addressData.placeId);
       }
-    }
-    
-    // Determinar o melhor nome para o condomínio
-    let condoName = '';
-    
-    // Preferência 1: Usar o nome do local fornecido pelo Google (provavelmente o nome do condomínio)
-    if (item.name && item.name.length > 3 && 
-        !item.name.includes("R.") && 
-        !item.name.includes("Rua") && 
-        !item.name.includes("Av.") && 
-        !item.name.includes("Avenida")) {
-      condoName = item.name;
-    } 
-    // Preferência 2: Usar o nome do local dos detalhes
-    else if (addressDetails?.name && addressDetails.name.length > 3 && 
-             !addressDetails.name.includes("R.") && 
-             !addressDetails.name.includes("Rua") && 
-             !addressDetails.name.includes("Av.") && 
-             !addressDetails.name.includes("Avenida")) {
-      condoName = addressDetails.name;
-    }
-    // Preferência 3: Gerar nome baseado no endereço "Condomínio + (Rua/Bairro)"
-    else {
-      if (addressDetails?.street) {
-        condoName = `Condomínio ${addressDetails.street}`;
-        if (addressDetails.number) {
-          condoName += `, ${addressDetails.number}`;
-        }
-      } else if (addressDetails?.neighborhood) {
-        condoName = `Condomínio ${addressDetails.neighborhood}`;
-      } else if (item.address) {
-        // Extrair o primeiro componente do endereço (normalmente a rua)
-        const addressParts = item.address.split(',');
-        if (addressParts.length > 0) {
-          condoName = `Condomínio ${addressParts[0].trim()}`;
-        }
-      }
-    }
-    
-    // Se todas as tentativas falharem, usar um nome genérico
-    if (!condoName || condoName.length < 4) {
-      condoName = "Novo Condomínio";
-    }
-    
-    // Montar objeto com todas as informações
-    const result = {
-      ...addressDetails,
-      existingCondo: existingCondo,
-      isNewCondo: !existingCondo,
-      originalItem: item,
-      suggestedName: condoName // Nome sugerido para o condomínio
     };
     
-    // Chamar callback com o resultado
-    if (onSelectAddress) {
-      onSelectAddress(result);
-    }
-    
-    // Limpar resultados e atualizar campo de busca
-    setSearchResults([]);
-    
-    // Manter texto de busca com o endereço formatado para referência
-    const displayText = item.address || addressDetails?.formattedAddress || '';
-    setSearchQuery(displayText);
-    
-    // Force focus and blur to ensure the TextInput updates
-    if (inputRef.current) {
-      inputRef.current.blur();
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.blur();
-        }
-      }, 50);
-    }
-  } catch (error) {
-    console.error('Erro ao selecionar endereço:', error);
-  } finally {
-    setLoading(false);
+    // Executar após um breve delay para garantir a atualização do estado
+    setTimeout(resetAddressFields, 10);
   }
 };
 

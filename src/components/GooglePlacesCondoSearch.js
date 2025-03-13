@@ -157,85 +157,19 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style, insi
       };
       // Atualizar a função para lidar com a seleção do condomínio no GooglePlacesCondoSearch
       const handleSelectCondo = (condo) => {
-        if (condo) {
-          console.log("Condomínio selecionado:", condo);
-          
-          // Atualizar dados básicos
-          // Se for um novo condomínio, manter o nome que o usuário já digitou
-          if (!condo.inSystem) {
-            updateCondoData('address', condo.address || '');
+        const handleSelectCondo = (condo) => {
+          if (condo) {
+            console.log("Condomínio selecionado:", condo);
+            
+            // Atualizar o estado com os dados do condomínio
+            updateResidentData('condoId', condo.id);
+            updateResidentData('condoName', condo.name);
           } else {
-            // Se for condomínio existente, pegar nome e endereço dele
-            updateCondoData('name', condo.name || condoData.name);
-            updateCondoData('address', condo.address || '');
+            // Limpar dados se nenhum condomínio for selecionado
+            updateResidentData('condoId', '');
+            updateResidentData('condoName', '');
           }
-          
-          // Extrair e atualizar dados de endereço
-          if (condo.address) {
-            // Processar componentes de endereço
-            let street = '';
-            let number = '';
-            let neighborhood = '';
-            let city = '';
-            let state = '';
-            let postalCode = '';
-            
-            // Extrair componentes do endereço
-            const addressParts = condo.address.split(',').map(part => part.trim());
-            
-            if (addressParts.length >= 1) {
-              // Primeira parte geralmente é rua e número
-              const firstPart = addressParts[0];
-              const numberMatch = firstPart.match(/(\d+)/);
-              
-              if (numberMatch) {
-                number = numberMatch[0];
-                street = firstPart.replace(number, '').trim();
-              } else {
-                street = firstPart;
-              }
-            }
-            
-            if (addressParts.length >= 2) {
-              // Segunda parte geralmente é o bairro
-              neighborhood = addressParts[1];
-            }
-            
-            if (addressParts.length >= 3) {
-              // Terceira parte geralmente é cidade
-              city = addressParts[2];
-            }
-            
-            if (addressParts.length >= 4) {
-              // Quarta parte geralmente é estado e CEP
-              const lastPart = addressParts[addressParts.length - 1];
-              const stateMatch = lastPart.match(/([A-Z]{2})/);
-              const postalCodeMatch = lastPart.match(/\d{5}(-\d{3})?/);
-              
-              if (stateMatch) {
-                state = stateMatch[1];
-              }
-              
-              if (postalCodeMatch) {
-                postalCode = postalCodeMatch[0];
-              }
-            }
-            
-            // Atualizar os campos de endereço
-            updateCondoData('addressDetails.street', street);
-            updateCondoData('addressDetails.number', number);
-            updateCondoData('addressDetails.neighborhood', neighborhood);
-            updateCondoData('addressDetails.city', city);
-            updateCondoData('addressDetails.state', state);
-            updateCondoData('addressDetails.postalCode', postalCode);
-          }
-          
-          // Atualizar coordenadas se disponíveis
-          if (condo.latitude && condo.longitude) {
-            updateCondoData('addressDetails.latitude', condo.latitude);
-            updateCondoData('addressDetails.longitude', condo.longitude);
-          }
-        }
+        };
       };
       
       // Função auxiliar para extrair detalhes de um endereço
