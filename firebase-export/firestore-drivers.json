@@ -1,0 +1,74 @@
+[
+  {
+    "id": "cZwpJWvtfCTjUEStZAwqmV0ezcC3",
+    "name": "Motorista 0",
+    "email": "tainadiego0207@gmail.com",
+    "type": "driver",
+    "profileComplete": true,
+    "createdAt": "2025-03-14T07:38:13.656Z",
+    "servicePreferences": {
+      "workSchedule": [],
+      "appServices": [
+        "Uber"
+      ]
+    },
+    "documents": {
+      "cnh": [
+        {
+          "path": "users/cZwpJWvtfCTjUEStZAwqmV0ezcC3/documents/cnh_1741937836008.jpeg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2FcZwpJWvtfCTjUEStZAwqmV0ezcC3%2Fdocuments%2Fcnh_1741937836008.jpeg?alt=media&token=4fad9d70-24db-4788-b303-0ab63ce1cd5a",
+          "type": "image/jpeg",
+          "name": "cnh_1741937836008.jpeg"
+        }
+      ],
+      "vehicleDocument": [
+        {
+          "path": "users/cZwpJWvtfCTjUEStZAwqmV0ezcC3/documents/vehicleDocument_1741937843044.jpeg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2FcZwpJWvtfCTjUEStZAwqmV0ezcC3%2Fdocuments%2FvehicleDocument_1741937843044.jpeg?alt=media&token=4dd6604d-cab5-4856-ae5a-fc05025a9cc4",
+          "type": "image/jpeg",
+          "name": "vehicleDocument_1741937843044.jpeg"
+        }
+      ],
+      "profilePhoto": [
+        {
+          "path": "users/cZwpJWvtfCTjUEStZAwqmV0ezcC3/documents/profilePhoto_1741937870207.jpg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2FcZwpJWvtfCTjUEStZAwqmV0ezcC3%2Fdocuments%2FprofilePhoto_1741937870207.jpg?alt=media&token=e72dcb71-e9a6-4740-bbc7-817a9d395cdd",
+          "type": "image/jpeg",
+          "name": "profilePhoto_1741937870207.jpg"
+        }
+      ],
+      "vehiclePhoto": [
+        {
+          "path": "users/cZwpJWvtfCTjUEStZAwqmV0ezcC3/documents/vehiclePhoto_1741937886553.jpeg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2FcZwpJWvtfCTjUEStZAwqmV0ezcC3%2Fdocuments%2FvehiclePhoto_1741937886553.jpeg?alt=media&token=b3a2a2a2-a0e5-4efd-90bb-11254973ae0d",
+          "type": "image/jpeg",
+          "name": "vehiclePhoto_1741937886553.jpeg"
+        }
+      ]
+    },
+    "phone": "15997187660",
+    "verificationStatus": "pending",
+    "vehicleData": {
+      "make": "Volkswagen ",
+      "model": "Gol",
+      "year": "2025",
+      "color": "Verde",
+      "plate": "ASD1235"
+    },
+    "cpf": "41209450810",
+    "licenseData": {
+      "cnh": "76400389944",
+      "cnhType": "B"
+    },
+    "statusNotes": "Aprovado pelo administrador",
+    "statusUpdatedAt": {
+      "_seconds": 1741938002,
+      "_nanoseconds": 666000000
+    },
+    "status": "active",
+    "updatedAt": {
+      "_seconds": 1741938002,
+      "_nanoseconds": 666000000
+    }
+  }
+]

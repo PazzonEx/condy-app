@@ -37,10 +37,11 @@ const ForgotPasswordScreen = ({ navigation }) => {
   
   // Estados
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
   const [showError, setShowError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [error, setError] = useState(null);
   
   // Animações
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -73,13 +74,13 @@ const ForgotPasswordScreen = ({ navigation }) => {
   // Validar email
   const validateEmail = () => {
     if (!email.trim()) {
-      setErrorMessage('Informe seu email');
+      setError('Informe seu email');
       setShowError(true);
       return false;
     }
     
     if (!isValidEmail(email)) {
-      setErrorMessage('Email inválido');
+      setError('Email inválido');
       setShowError(true);
       return false;
     }
@@ -87,31 +88,42 @@ const ForgotPasswordScreen = ({ navigation }) => {
     return true;
   };
   
-  // Enviar email de recuperação
-  const handleResetPassword = async () => {
-    if (!validateEmail()) return;
+// Enviar email de recuperação
+const handleResetPassword = async () => {
+  if (!validateEmail()) return;
+  
+  setLoading(true);
+  setShowError(false);
+  
+  try {
+    await resetPassword(email);
+    setEmailSent(true);
     
-    setLoading(true);
-    setShowError(false);
-    
+    // Registrar atividade de recuperação de senha (opcional)
     try {
-      await resetPassword(email);
-      setEmailSent(true);
-    } catch (error) {
-      let errorMsg = 'Erro ao enviar email de recuperação';
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMsg = 'Não há registro de usuário com este email';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
-      }
-      
-      setErrorMessage(errorMsg);
-      setShowError(true);
-    } finally {
-      setLoading(false);
+      await analytics.logEvent('password_reset_requested', {
+        email_domain: email.split('@')[1]
+      });
+    } catch (analyticsError) {
+      console.log('Erro ao registrar analytics:', analyticsError);
     }
-  };
+  } catch (error) {
+    let errorMsg = 'Erro ao enviar email de recuperação';
+    
+    if (error.code === 'auth/user-not-found') {
+      errorMsg = 'Não há registro de usuário com este email';
+    } else if (error.code === 'auth/too-many-requests') {
+      errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
+    } else if (error.code === 'auth/invalid-email') {
+      errorMsg = 'Email inválido';
+    }
+    
+    setError(errorMsg);
+    setShowError(true);
+  } finally {
+    setLoading(false);
+  }
+};
   
   // Voltar para tela de login
   const handleGoBack = () => {

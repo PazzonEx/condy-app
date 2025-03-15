@@ -14,7 +14,6 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
-  Image,
   BackHandler
 } from 'react-native';
 import { 
@@ -51,13 +50,17 @@ const RegisterScreen = ({ route }) => {
   const userType = route.params?.userType;
   
   // Estados
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [registerData, setRegisterData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    termsAccepted: false
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
   const [showError, setShowError] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
@@ -73,6 +76,22 @@ const RegisterScreen = ({ route }) => {
   const progressValue = useRef(new Animated.Value(1)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formTranslateY = useRef(new Animated.Value(50)).current;
+  
+  // Função para atualizar dados
+  const updateRegisterData = (field, value) => {
+    setRegisterData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Limpar erro específico para este campo
+    if (errors[field]) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: null
+      }));
+    }
+  };
   
   // Efeito para lidar com o botão de voltar do hardware
   useEffect(() => {
@@ -114,6 +133,33 @@ const RegisterScreen = ({ route }) => {
       }),
     ]).start();
     
+    // Verificar se temos um tipo de usuário
+    if (!userType) {
+      // Tentar recuperar do AsyncStorage como backup
+      const checkUserType = async () => {
+        try {
+          const storedType = await AsyncStorage.getItem('@user_type');
+          if (!storedType) {
+            // Se não houver tipo armazenado, voltar para a tela de seleção
+            Alert.alert(
+              "Tipo de usuário não definido",
+              "Por favor, selecione o tipo de usuário primeiro.",
+              [
+                {
+                  text: "OK",
+                  onPress: () => navigation.navigate('UserType')
+                }
+              ]
+            );
+          }
+        } catch (error) {
+          console.error("Erro ao recuperar tipo de usuário:", error);
+        }
+      };
+      
+      checkUserType();
+    }
+    
     return () => {
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
@@ -122,7 +168,7 @@ const RegisterScreen = ({ route }) => {
   
   // Efeito para verificar a força da senha
   useEffect(() => {
-    if (!password) {
+    if (!registerData.password) {
       setPasswordStrength(0);
       return;
     }
@@ -130,19 +176,19 @@ const RegisterScreen = ({ route }) => {
     let strength = 0;
     
     // Verificar tamanho
-    if (password.length >= 8) strength += 0.25;
+    if (registerData.password.length >= 8) strength += 0.25;
     
     // Verificar presença de números
-    if (/\d/.test(password)) strength += 0.25;
+    if (/\d/.test(registerData.password)) strength += 0.25;
     
     // Verificar presença de caracteres especiais
-    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength += 0.25;
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(registerData.password)) strength += 0.25;
     
     // Verificar presença de letras maiúsculas e minúsculas
-    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 0.25;
+    if (/[a-z]/.test(registerData.password) && /[A-Z]/.test(registerData.password)) strength += 0.25;
     
     setPasswordStrength(strength);
-  }, [password]);
+  }, [registerData.password]);
   
   // Efeito para animar o progresso do cadastro
   useEffect(() => {
@@ -163,67 +209,60 @@ const RegisterScreen = ({ route }) => {
     return '#4CAF50'; // Forte
   };
   
-  // Validar nome
-  const validateName = () => {
-    if (!name.trim()) {
-      setError('Informe seu nome completo');
-      setShowError(true);
-      return false;
+  // Validar formulário completo
+  const validateForm = () => {
+    const newErrors = {};
+    let isValid = true;
+    
+    if (step === 1) {
+      // Validar nome
+      if (!registerData.name.trim()) {
+        newErrors.name = 'Nome é obrigatório';
+        isValid = false;
+      } else if (registerData.name.trim().length < 3) {
+        newErrors.name = 'Nome deve ter pelo menos 3 caracteres';
+        isValid = false;
+      }
+      
+      // Validar email
+      if (!registerData.email.trim()) {
+        newErrors.email = 'Email é obrigatório';
+        isValid = false;
+      } else if (!isValidEmail(registerData.email)) {
+        newErrors.email = 'Email inválido';
+        isValid = false;
+      }
+    } else if (step === 2) {
+      // Validar senha
+      if (!registerData.password) {
+        newErrors.password = 'Senha é obrigatória';
+        isValid = false;
+      } else if (registerData.password.length < 6) {
+        newErrors.password = 'Senha deve ter pelo menos 6 caracteres';
+        isValid = false;
+      }
+      
+      // Validar confirmação de senha
+      if (registerData.password !== registerData.confirmPassword) {
+        newErrors.confirmPassword = 'As senhas não coincidem';
+        isValid = false;
+      }
+      
+      // Validar aceite dos termos
+      if (!registerData.termsAccepted) {
+        newErrors.termsAccepted = 'Você precisa aceitar os termos de uso';
+        isValid = false;
+      }
     }
     
-    if (name.trim().length < 3) {
-      setError('Nome muito curto');
-      setShowError(true);
-      return false;
-    }
-    
-    return true;
-  };
-  
-  // Validar email
-  const validateEmail = () => {
-    if (!email.trim()) {
-      setError('Informe seu email');
-      setShowError(true);
-      return false;
-    }
-    
-    if (!isValidEmail(email)) {
-      setError('Email inválido');
-      setShowError(true);
-      return false;
-    }
-    
-    return true;
-  };
-  
-  // Validar senha
-  const validateUserPassword = () => {
-    if (!password) {
-      setError('Informe uma senha');
-      setShowError(true);
-      return false;
-    }
-    
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres');
-      setShowError(true);
-      return false;
-    }
-    
-    if (password !== confirmPassword) {
-      setError('As senhas não coincidem');
-      setShowError(true);
-      return false;
-    }
-    
-    return true;
+    setErrors(newErrors);
+    return isValid;
   };
   
   // Avançar para o próximo passo
   const nextStep = () => {
     if (step === 1) {
-      if (validateName() && validateEmail()) {
+      if (validateForm()) {
         setStep(2);
         setTimeout(() => passwordInputRef.current?.focus(), 100);
       }
@@ -267,9 +306,11 @@ const RegisterScreen = ({ route }) => {
       ]
     );
   };
+  
+  // Registrar usuário
   const handleRegister = async () => {
     try {
-      if (!validateUserPassword()) return;
+      if (!validateForm()) return;
       
       Keyboard.dismiss();
       setLoading(true);
@@ -279,30 +320,20 @@ const RegisterScreen = ({ route }) => {
       console.log("Tentando registrar com tipo:", userType);
       
       // Garantir que userType seja válido
-      if (!userType) {
-        console.warn("Tipo de usuário não definido na tela de registro. Verificando AsyncStorage...");
-        
-        // Tentar recuperar do AsyncStorage como backup
-        const storedType = await AsyncStorage.getItem('@user_type');
-        
-        if (storedType && ['resident', 'driver', 'condo', 'admin'].includes(storedType)) {
-          console.log("Usando tipo recuperado do AsyncStorage:", storedType);
-          // Usar tipo do AsyncStorage se disponível
-          await register(email, password, name, storedType);
-          console.log("Registro bem-sucedido com tipo recuperado");
-        } else {
-          // Alerta ao usuário se não conseguirmos determinar o tipo
-          setError("Não foi possível determinar o tipo de usuário. Por favor, volte e selecione novamente.");
-          setShowError(true);
-          setLoading(false);
-          return;
-        }
-      } else {
-        // Usar o tipo que já está definido
-        console.log("Registrando com tipo:", userType);
-        await register(email, password, name, userType);
-        console.log("Registro bem-sucedido com tipo:", userType);
+      const actualUserType = userType || await AsyncStorage.getItem('@user_type');
+      
+      if (!actualUserType || !['resident', 'driver', 'condo', 'admin'].includes(actualUserType)) {
+        console.error("Tipo de usuário inválido ou não especificado:", actualUserType);
+        setError("Tipo de usuário inválido. Por favor, volte e selecione novamente.");
+        setShowError(true);
+        setLoading(false);
+        return;
       }
+      
+      // Enviar ao Firebase
+      console.log(`Registrando ${registerData.name} como ${actualUserType}`);
+      await register(registerData.email, registerData.password, registerData.name, actualUserType);
+      console.log("Registro bem-sucedido! Redirecionando...");
       
       // Redirecionar para a tela apropriada após o registro
       // Isso acontecerá automaticamente pelo RootNavigator
@@ -317,7 +348,7 @@ const RegisterScreen = ({ route }) => {
           [
             { 
               text: "Ir para login", 
-              onPress: () => navigation.navigate('Login', { email })
+              onPress: () => navigation.navigate('Login', { email: registerData.email })
             },
             {
               text: "Tentar novamente",
@@ -325,6 +356,16 @@ const RegisterScreen = ({ route }) => {
             }
           ]
         );
+      } else if (error.code === 'auth/weak-password') {
+        setErrors({
+          ...errors,
+          password: 'A senha é muito fraca. Use pelo menos 6 caracteres.'
+        });
+      } else if (error.code === 'auth/invalid-email') {
+        setErrors({
+          ...errors,
+          email: 'Email inválido. Verifique o formato.'
+        });
       } else {
         // Para outros erros, exibir mensagem padrão
         setError(error.message || 'Erro ao criar conta. Tente novamente.');
@@ -335,16 +376,35 @@ const RegisterScreen = ({ route }) => {
     }
   };
   
+  // Obter tipo de usuário formatado
+  const getUserTypeText = () => {
+    switch (userType) {
+      case 'resident': return 'Morador';
+      case 'driver': return 'Motorista';
+      case 'condo': return 'Condomínio';
+      case 'admin': return 'Administrador';
+      default: return 'Usuário';
+    }
+  };
+  
   // Renderizar o formulário do passo 1 (nome e email)
   const renderStep1 = () => (
     <>
+      {/* Identificação do tipo de usuário */}
+      <View style={styles.userTypeContainer}>
+        <View style={[styles.userTypeIndicator, { backgroundColor: getUserTypeColor() }]}>
+          <MaterialCommunityIcons name={getUserTypeIcon()} size={20} color="#FFFFFF" />
+        </View>
+        <Text style={styles.userTypeText}>Cadastro de {getUserTypeText()}</Text>
+      </View>
+      
       {/* Campo de Nome */}
       <View style={styles.inputContainer}>
         <MaterialCommunityIcons name="account-outline" size={24} color={theme.colors.primary} style={styles.inputIcon} />
         <TextInput
           label="Nome completo"
-          value={name}
-          onChangeText={setName}
+          value={registerData.name}
+          onChangeText={(text) => updateRegisterData('name', text)}
           autoCapitalize="words"
           returnKeyType="next"
           onSubmitEditing={() => emailInputRef.current?.focus()}
@@ -352,9 +412,10 @@ const RegisterScreen = ({ route }) => {
           mode="outlined"
           outlineColor="#E0E0E0"
           activeOutlineColor={theme.colors.primary}
-          error={showError && !name.trim()}
+          error={!!errors.name}
         />
       </View>
+      {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
       
       {/* Campo de Email */}
       <View style={styles.inputContainer}>
@@ -362,8 +423,8 @@ const RegisterScreen = ({ route }) => {
         <TextInput
           ref={emailInputRef}
           label="Email"
-          value={email}
-          onChangeText={setEmail}
+          value={registerData.email}
+          onChangeText={(text) => updateRegisterData('email', text)}
           autoCapitalize="none"
           keyboardType="email-address"
           returnKeyType="next"
@@ -372,9 +433,10 @@ const RegisterScreen = ({ route }) => {
           mode="outlined"
           outlineColor="#E0E0E0"
           activeOutlineColor={theme.colors.primary}
-          error={showError && (!email.trim() || !isValidEmail(email))}
+          error={!!errors.email}
         />
       </View>
+      {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
     </>
   );
   
@@ -387,8 +449,8 @@ const RegisterScreen = ({ route }) => {
         <TextInput
           ref={passwordInputRef}
           label="Senha"
-          value={password}
-          onChangeText={setPassword}
+          value={registerData.password}
+          onChangeText={(text) => updateRegisterData('password', text)}
           secureTextEntry={!showPassword}
           returnKeyType="next"
           onSubmitEditing={() => confirmPasswordInputRef.current?.focus()}
@@ -396,7 +458,7 @@ const RegisterScreen = ({ route }) => {
           mode="outlined"
           outlineColor="#E0E0E0"
           activeOutlineColor={theme.colors.primary}
-          error={showError && !password}
+          error={!!errors.password}
           right={
             <TextInput.Icon 
               icon={showPassword ? "eye-off" : "eye"} 
@@ -406,6 +468,7 @@ const RegisterScreen = ({ route }) => {
           }
         />
       </View>
+      {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
       
       {/* Indicador de Força da Senha */}
       <View style={styles.passwordStrengthContainer}>
@@ -427,8 +490,8 @@ const RegisterScreen = ({ route }) => {
         <TextInput
           ref={confirmPasswordInputRef}
           label="Confirmar senha"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
+          value={registerData.confirmPassword}
+          onChangeText={(text) => updateRegisterData('confirmPassword', text)}
           secureTextEntry={!showConfirmPassword}
           returnKeyType="done"
           onSubmitEditing={handleRegister}
@@ -436,7 +499,7 @@ const RegisterScreen = ({ route }) => {
           mode="outlined"
           outlineColor="#E0E0E0"
           activeOutlineColor={theme.colors.primary}
-          error={showError && password !== confirmPassword}
+          error={!!errors.confirmPassword}
           right={
             <TextInput.Icon 
               icon={showConfirmPassword ? "eye-off" : "eye"} 
@@ -446,45 +509,102 @@ const RegisterScreen = ({ route }) => {
           }
         />
       </View>
+      {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
       
       {/* Dicas para Senha Forte */}
       <View style={styles.passwordTipsContainer}>
         <Text style={styles.passwordTipsTitle}>Dicas para uma senha forte:</Text>
         <View style={styles.passwordTipItem}>
           <MaterialCommunityIcons 
-            name={password.length >= 8 ? "check-circle" : "information"} 
+            name={registerData.password.length >= 8 ? "check-circle" : "information"} 
             size={16} 
-            color={password.length >= 8 ? "#4CAF50" : "#757575"} 
+            color={registerData.password.length >= 8 ? "#4CAF50" : "#757575"} 
           />
           <Text style={styles.passwordTipText}>Pelo menos 8 caracteres</Text>
         </View>
         <View style={styles.passwordTipItem}>
           <MaterialCommunityIcons 
-            name={/\d/.test(password) ? "check-circle" : "information"} 
+            name={/\d/.test(registerData.password) ? "check-circle" : "information"} 
             size={16}
-            color={/\d/.test(password) ? "#4CAF50" : "#757575"} 
+            color={/\d/.test(registerData.password) ? "#4CAF50" : "#757575"} 
           />
           <Text style={styles.passwordTipText}>Inclua números</Text>
         </View>
         <View style={styles.passwordTipItem}>
           <MaterialCommunityIcons 
-            name={/[!@#$%^&*(),.?":{}|<>]/.test(password) ? "check-circle" : "information"} 
+            name={/[!@#$%^&*(),.?":{}|<>]/.test(registerData.password) ? "check-circle" : "information"} 
             size={16}
-            color={/[!@#$%^&*(),.?":{}|<>]/.test(password) ? "#4CAF50" : "#757575"} 
+            color={/[!@#$%^&*(),.?":{}|<>]/.test(registerData.password) ? "#4CAF50" : "#757575"} 
           />
           <Text style={styles.passwordTipText}>Inclua caracteres especiais (!@#$)</Text>
         </View>
         <View style={styles.passwordTipItem}>
           <MaterialCommunityIcons 
-            name={/[a-z]/.test(password) && /[A-Z]/.test(password) ? "check-circle" : "information"} 
+            name={/[a-z]/.test(registerData.password) && /[A-Z]/.test(registerData.password) ? "check-circle" : "information"} 
             size={16}
-            color={/[a-z]/.test(password) && /[A-Z]/.test(password) ? "#4CAF50" : "#757575"} 
+            color={/[a-z]/.test(registerData.password) && /[A-Z]/.test(registerData.password) ? "#4CAF50" : "#757575"} 
           />
           <Text style={styles.passwordTipText}>Letras maiúsculas e minúsculas</Text>
         </View>
       </View>
+      
+      {/* Termos de uso */}
+      <View style={styles.termsContainer}>
+        <TouchableOpacity 
+          style={styles.checkboxContainer}
+          onPress={() => updateRegisterData('termsAccepted', !registerData.termsAccepted)}
+        >
+          <MaterialCommunityIcons 
+            name={registerData.termsAccepted ? "checkbox-marked" : "checkbox-blank-outline"} 
+            size={20} 
+            color={registerData.termsAccepted ? theme.colors.primary : "#757575"} 
+          />
+          <Text style={styles.termsText}>
+            Li e aceito os <Text 
+              style={styles.termsLink}
+              onPress={() => navigation.navigate('TermsOfUse')}
+            >
+              termos de uso
+            </Text> e <Text 
+              style={styles.termsLink}
+              onPress={() => navigation.navigate('PrivacyPolicy')}
+            >
+              política de privacidade
+            </Text>
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {errors.termsAccepted && <Text style={styles.errorText}>{errors.termsAccepted}</Text>}
     </>
   );
+  
+  // Obter ícone baseado no tipo de usuário
+  const getUserTypeIcon = () => {
+    switch (userType) {
+      case 'driver':
+        return 'car';
+      case 'condo':
+        return 'office-building';
+      case 'admin':
+        return 'shield-account';
+      default:
+        return 'home-account';
+    }
+  };
+  
+  // Obter cor baseada no tipo de usuário
+  const getUserTypeColor = () => {
+    switch (userType) {
+      case 'driver':
+        return '#FF9800';
+      case 'condo':
+        return '#4CAF50';
+      case 'admin':
+        return '#9C27B0';
+      default:
+        return '#2196F3';
+    }
+  };
   
   // Renderizar botões de navegação
   const renderButtons = () => (
@@ -513,44 +633,6 @@ const RegisterScreen = ({ route }) => {
       </Button>
     </View>
   );
-  
-  // Obter o título do formulário com base no tipo de usuário
-  const getFormTitle = () => {
-    switch (userType) {
-      case 'driver':
-        return 'Cadastro de Motorista';
-      case 'condo':
-        return 'Cadastro de Condomínio';
-      default:
-        return 'Cadastro de Morador';
-    }
-  };
-  
-  // Renderizar ícone do tipo de usuário
-  const renderUserTypeIcon = () => {
-    let iconName = 'account';
-    let iconColor = theme.colors.primary;
-    
-    switch (userType) {
-      case 'driver':
-        iconName = 'car';
-        iconColor = '#FF9800';
-        break;
-      case 'condo':
-        iconName = 'office-building';
-        iconColor = '#4CAF50';
-        break;
-      default:
-        iconName = 'home-account';
-        iconColor = '#2196F3';
-    }
-    
-    return (
-      <View style={[styles.userTypeIconContainer, { backgroundColor: iconColor + '20' }]}>
-        <MaterialCommunityIcons name={iconName} size={32} color={iconColor} />
-      </View>
-    );
-  };
   
   return (
     <KeyboardAvoidingView 
@@ -602,13 +684,7 @@ const RegisterScreen = ({ route }) => {
           ]}
         >
           <Surface style={styles.formSurface}>
-            <View style={styles.formTitleContainer}>
-              {renderUserTypeIcon()}
-              <Text style={styles.formTitle}>{getFormTitle()}</Text>
-            </View>
-            
             {step === 1 ? renderStep1() : renderStep2()}
-            
             {renderButtons()}
           </Surface>
           
@@ -630,6 +706,10 @@ const RegisterScreen = ({ route }) => {
         onDismiss={() => setShowError(false)}
         duration={3000}
         style={styles.errorSnackbar}
+        action={{
+          label: 'OK',
+          onPress: () => setShowError(false),
+        }}
       >
         {error}
       </Snackbar>
@@ -688,28 +768,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     elevation: 2,
   },
-  formTitleContainer: {
+  userTypeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 24,
   },
-  userTypeIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  userTypeIndicator: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
-  formTitle: {
-    fontSize: 22,
+  userTypeText: {
+    fontSize: 16,
     fontWeight: 'bold',
-    flex: 1,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   inputIcon: {
     marginRight: 12,
@@ -718,6 +797,12 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  errorText: {
+    color: '#F44336',
+    fontSize: 12,
+    marginLeft: 36,
+    marginBottom: 8,
   },
   passwordStrengthContainer: {
     flexDirection: 'row',
@@ -739,7 +824,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     padding: 16,
     borderRadius: 8,
-    marginBottom: 24,
+    marginBottom: 16,
     marginLeft: 36,
   },
   passwordTipsTitle: {
@@ -757,9 +842,28 @@ const styles = StyleSheet.create({
     color: '#757575',
     marginLeft: 8,
   },
+  termsContainer: {
+    marginVertical: 16,
+    marginLeft: 36,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  termsText: {
+    fontSize: 14,
+    color: '#757575',
+    marginLeft: 8,
+    flex: 1,
+  },
+  termsLink: {
+    color: '#2196F3',
+    fontWeight: 'bold',
+  },
   buttonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 16,
   },
   backButton: {
     flex: 0.48,

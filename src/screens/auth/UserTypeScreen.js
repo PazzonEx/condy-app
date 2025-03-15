@@ -41,6 +41,22 @@ const UserTypeScreen = ({ navigation }) => {
   
   // Efeito para animar entrada
   useEffect(() => {
+
+ // Verificar se um tipo já foi selecionado anteriormente
+ const checkPreviousSelection = async () => {
+  try {
+    const savedType = await AsyncStorage.getItem('@user_type');
+    if (savedType && ['resident', 'driver', 'condo'].includes(savedType)) {
+      setSelectedType(savedType);
+    }
+  } catch (error) {
+    console.error('Erro ao recuperar tipo de usuário:', error);
+  }
+};
+
+checkPreviousSelection();
+
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -55,30 +71,30 @@ const UserTypeScreen = ({ navigation }) => {
     ]).start();
   }, []);
   
-  // Selecionar tipo de usuário
-  const handleSelectType = (type) => {
-    console.log(`Tipo de usuário selecionado: ${type}`);
-    setSelectedType(type);
+ // Selecionar tipo de usuário
+const handleSelectType = (type) => {
+  console.log(`Tipo de usuário selecionado: ${type}`);
+  setSelectedType(type);
 
-      // Armazenar o tipo selecionado também no AsyncStorage como backup
+  // Armazenar o tipo selecionado também no AsyncStorage como backup
   AsyncStorage.setItem('@user_type', type);
-    
-    // Animar card selecionado
-    const animations = cardScales.map((scale, index) => {
-      return Animated.timing(scale, {
-        toValue: ['resident', 'driver', 'condo'].indexOf(type) === index ? 1.05 : 0.95,
-        duration: 300,
-        useNativeDriver: true,
-      });
+  
+  // Animar card selecionado
+  const animations = cardScales.map((scale, index) => {
+    return Animated.timing(scale, {
+      toValue: ['resident', 'driver', 'condo'].indexOf(type) === index ? 1.05 : 0.95,
+      duration: 300,
+      useNativeDriver: true,
     });
-    
-    Animated.parallel(animations).start(() => {
-      // Navegar para tela de cadastro após a animação
-      setTimeout(() => {
-        navigation.navigate('Register', { userType: type });
-      }, 300);
-    });
-  };
+  });
+  
+  Animated.parallel(animations).start(() => {
+    // Navegar para tela de cadastro após a animação
+    setTimeout(() => {
+      navigation.navigate('Register', { userType: type });
+    }, 300);
+  });
+};
   
   // Voltar para tela anterior
   const handleGoBack = () => {
@@ -109,6 +125,26 @@ const UserTypeScreen = ({ navigation }) => {
         return '#4CAF50';
       default:
         return '#2196F3';
+    }
+  };
+  const getUserTypeIcon = (type) => {
+    switch (type) {
+      case 'driver':
+        return 'car';
+      case 'condo':
+        return 'office-building';
+      default:
+        return 'home-account';
+    }
+  };
+  const getUserTypeDescription = (type) => {
+    switch (type) {
+      case 'driver':
+        return 'Você é motorista de aplicativo, taxista ou entregador que acessa condomínios';
+      case 'condo':
+        return 'Você é um administrador ou porteiro de condomínio que gerencia acessos';
+      default:
+        return 'Você mora em um condomínio e deseja liberar acesso para motoristas';
     }
   };
   

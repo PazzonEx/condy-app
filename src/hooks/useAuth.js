@@ -1,12 +1,12 @@
 // src/contexts/AuthContext.js (versão integrada com funcionalidade de cancelamento)
-import { useState, useEffect, useContext, createContext } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { useState, useEffect, useContext, createContext, useRef } from 'react';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { auth, firestore } from '../config/firebase';
-import AuthService from '../services/auth.service';
-import FirestoreService from '../services/firestore.service';
-import NotificationService from '../services/notification.service';
-import { doc, getDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import FirestoreService from '../services/firestore.service';
+import AuthService from '../services/auth.service';
+import NotificationService from '../services/notification.service';
 
 // Contexto de autenticação
 const AuthContext = createContext();
@@ -365,11 +365,21 @@ const updateLastActive = async (userId) => {
     }
   };
 
-// Em src/hooks/useAuth.js
-// Em src/hooks/useAuth.js
+// Registro de usuário com verificação de tipo - Reforçado para melhor validação
 const register = async (email, password, displayName, userType) => {
   setError(null);
+  
   try {
+    console.log("Recebendo na função register:", {
+      email,
+      displayName,
+      userType
+    });
+    
+    // Validação adicional
+    if (!email || !email.trim()) {
+      throw new Error('Email não fornecido');
+    }
     // Log para debugar a passagem de parâmetros
     console.log(`Register chamado com parâmetros: email=${email}, displayName=${displayName}, userType=${userType}`);
     
@@ -379,20 +389,19 @@ const register = async (email, password, displayName, userType) => {
       throw new Error('Tipo de usuário inválido ou não especificado');
     }
     
-     // Registrar com Firebase Auth
-     const result = await AuthService.register(email, password, displayName, userType);
+    // Registrar com Firebase Auth
+    const result = await AuthService.register(email, password, displayName, userType);
     
-     // Verificar formato do retorno (pode ser { user } ou o próprio user)
-     const user = result?.user || result;
+    // Verificar formato do retorno (pode ser { user } ou o próprio user)
+    const user = result?.user || result;
 
-     if (!user) {
+    if (!user) {
       console.error("Registro aparentemente bem-sucedido, mas usuário não retornado");
       // Verificar usuário atual como última tentativa
       const currentUser = auth.currentUser;
       if (currentUser) {
         console.log("Usando auth.currentUser como fallback após registro");
         
-        // Continuar com o currentUser
         // Armazenar no AsyncStorage também como backup
         await AsyncStorage.setItem('@user_type', userType);
         
@@ -409,30 +418,16 @@ const register = async (email, password, displayName, userType) => {
           lastActive: serverTimestamp()
         };
         
-        console.log("Salvando dados do usuário com currentUser:", userData);
+        // Criar documento do usuário no Firestore
+        await FirestoreService.createDocumentWithId('users', currentUser.uid, userData);
         
-        try {
-          // Criar documento do usuário no Firestore (ou verificar se já existe)
-          const existingUser = await FirestoreService.getDocument('users', currentUser.uid);
-          if (!existingUser) {
-            await FirestoreService.createDocumentWithId('users', currentUser.uid, userData);
-          }
-          
-          // Verificar documento específico
-          const specificCollection = userType + 's';
-          const existingSpecific = await FirestoreService.getDocument(specificCollection, currentUser.uid);
-          if (!existingSpecific) {
-            await createUserTypeSpecificDocument(userType, currentUser.uid, { 
-              email, 
-              name: displayName,
-              status: userType === 'admin' ? 'active' : 'pending_verification',
-              profileComplete: false
-            });
-          }
-        } catch (docError) {
-          console.log("Erro ao verificar/criar documentos após registro:", docError);
-          // Continuar mesmo com erro de documento
-        }
+        // Criar documento específico baseado no tipo de usuário
+        await createUserTypeSpecificDocument(userType, currentUser.uid, { 
+          email, 
+          name: displayName,
+          status: userType === 'admin' ? 'active' : 'pending_verification',
+          profileComplete: false
+        });
         
         // Atualizar perfil localmente
         setUserProfile({
@@ -445,7 +440,6 @@ const register = async (email, password, displayName, userType) => {
       
       throw new Error('Falha ao criar usuário (retorno nulo)');
     }
-    
     
     // Armazenar no AsyncStorage também como backup
     await AsyncStorage.setItem('@user_type', userType);
@@ -463,8 +457,6 @@ const register = async (email, password, displayName, userType) => {
       lastActive: serverTimestamp()
     };
     
-    console.log("Salvando dados do usuário:", userData);
-    
     // Criar documento do usuário no Firestore
     await FirestoreService.createDocumentWithId('users', user.uid, userData);
     
@@ -476,7 +468,7 @@ const register = async (email, password, displayName, userType) => {
       profileComplete: false
     });
     
-    // Atualizar perfil localmente para refletir as alterações
+    // Atualizar perfil localmente
     setUserProfile({
       ...userData,
       profileComplete: false
@@ -578,13 +570,16 @@ const createUserTypeSpecificDocument = async (userType, userId, basicData) => {
   const login = async (email, password) => {
     setError(null);
     try {
+      console.log("Tentando login com:", email); // Adicione este log
       const result = await AuthService.login(email, password);
+      console.log("Login bem-sucedido:", result); // Adicione este log
       
       // Salvar email no AsyncStorage para facilitar futuros logins
       await AsyncStorage.setItem('@auth_email', email);
       
       return result;
     } catch (err) {
+      console.error("Erro de login completo:", err); // Melhore este log
       setError(err.message);
       throw err;
     }
@@ -743,28 +738,7 @@ const cancelRegistration = async (userType) => {
     }
   };
 
-  // Recarregar perfil do usuário
-  const reloadUserProfile = async () => {
-    if (currentUser) {
-      try {
-        // Buscar informações atualizadas do usuário no Firestore
-        const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
-        setUserProfile(userDoc);
-        
-        // Recarregar dados específicos
-        if (userDoc?.type) {
-          await loadUserTypeSpecificData(userDoc.type, currentUser.uid);
-        }
-        
-        return true;
-      } catch (error) {
-        console.error('Erro ao recarregar perfil:', error);
-        return false;
-      }
-    }
-    return false;
-  };
-
+  
   // Reautenticar usuário (necessário para operações sensíveis) - NOVA FUNÇÃO
   const reauthenticate = async (password) => {
     if (!currentUser) throw new Error('Usuário não autenticado');
@@ -805,7 +779,6 @@ const cancelRegistration = async (userType) => {
     login,
     logout,
     cancelRegistration, // Nova função para cancelar cadastro
-    reloadUserProfile,
     resetPassword,
     updateProfile,
     reauthenticate, // Nova função para reautenticar

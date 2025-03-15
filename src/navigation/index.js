@@ -1,22 +1,17 @@
 // src/navigation/index.js
-import React, { useEffect,useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useTheme } from 'react-native-paper';
-import {Platform, StatusBar} from 'react-native';
-// Hooks
+
+
 import { useAuth } from '../hooks/useAuth';
 
-// Telas de autenticação
-import LoginScreen from '../screens/auth/LoginScreen';
-import RegisterScreen from '../screens/auth/RegisterScreen';
-import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
-import UserTypeScreen from '../screens/auth/UserTypeScreen';
-
-// Telas de registro complementar
-import DriverRegisterScreen from '../screens/driver/DriverRegisterScreen';
+// Telas de autenticação e registro
+import AuthNavigator from './AuthNavigator';
 import ResidentRegisterScreen from '../screens/resident/ResidentRegisterScreen';
+import DriverRegisterScreen from '../screens/driver/DriverRegisterScreen';
 import CondoRegisterScreen from '../screens/condo/CondoRegisterScreen';
+import PendingApprovalScreen from '../screens/shared/PendingApprovalScreen';
 
 // Navegadores específicos
 import ResidentNavigator from './ResidentNavigator';
@@ -24,59 +19,66 @@ import DriverNavigator from './DriverNavigator';
 import CondoNavigator from './CondoNavigator';
 import AdminNavigator from './AdminNavigator';
 
-// Telas de espera/aprovação
-import PendingApprovalScreen from '../screens/shared/PendingApprovalScreen';
+// Componentes
 import LoadingOverlay from '../components/LoadingOverlay';
-import FirestoreService from '../services/firestore.service';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Stack = createStackNavigator();
 
-const AuthNavigator = () => {
-
-
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: '#1E88E5',
-           // Altura maior para acomodar a status bar
-          // Ou use paddingTop para adicionar espaço adicional
-          height: Platform.OS === 'android' ? 80 + StatusBar.currentHeight : 80,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      }}
-    >
-      <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-        options={{ title: 'Entrar' }}
-      />
-      <Stack.Screen
-        name="Register"
-        component={RegisterScreen}
-        options={{ title: 'Cadastrar' }}
-      />
-      <Stack.Screen
-        name="ForgotPassword"
-        component={ForgotPasswordScreen}
-        options={{ title: 'Recuperar Senha' }}
-      />
-      <Stack.Screen
-        name="UserType"
-        component={UserTypeScreen}
-        options={{ title: 'Tipo de Usuário' }}
-      />
-    </Stack.Navigator>
-  );
-};
+ 
 
 const RootNavigator = () => {
-  const { currentUser, userProfile, loading, reloadUserProfile } = useAuth();
-  const theme = useTheme();
+  const { currentUser, userProfile, loading } = useAuth();
+  const redirectionInProgress = useRef(false);
+
+
+
+
+// Remover referências como esta:
+useEffect(() => {
+  if (currentUser && !loading && !redirectionInProgress.current) {
+    const checkProfile = async () => {
+      try {
+        redirectionInProgress.current = true;
+      
+        
+        console.log("Perfil verificado, aguardando navegação...");
+        
+        setTimeout(() => {
+          redirectionInProgress.current = false;
+        }, 1000);
+      } catch (error) {
+        console.error("Erro ao verificar perfil:", error);
+        redirectionInProgress.current = false;
+      }
+    };
+    
+    checkProfile();
+  }
+}, [currentUser, loading]);
+
+
+  useEffect(() => {
+    if (currentUser && userProfile) {
+      console.log("Estado do usuário - UID:", currentUser.uid);
+      console.log("Estado do perfil - Tipo:", userProfile.type);
+      console.log("Estado do perfil - Completo:", userProfile.profileComplete);
+      console.log("Estado do perfil - Status:", userProfile.status);
+    }
+  }, [currentUser, userProfile]);
+  
+  // Debugar estado atual
+  useEffect(() => {
+    if (currentUser) {
+      console.log('Usuário logado:', currentUser.uid);
+      console.log('Perfil:', userProfile);
+      if (userProfile) {
+        console.log('Precisa de aprovação:', needsApproval());
+        console.log('Precisa completar perfil:', needsProfileCompletion());
+      }
+    }
+  }, [currentUser, userProfile]);
+  
+   
   // Função para verificar se o usuário precisa completar o cadastro
   const needsProfileCompletion = () => {
     // Se não tiver perfil, não precisa completar o cadastro
@@ -88,7 +90,7 @@ const RootNavigator = () => {
     // Se o perfil não tiver a flag de completo
     return userProfile.profileComplete !== true;
   };
-  const redirectionInProgress = useRef(false);
+
   
   // Função para verificar se o usuário está em espera de aprovação
   const needsApproval = () => {
@@ -120,62 +122,10 @@ const RootNavigator = () => {
     }
   };
   
-
-  // Em src/navigation/index.js
-// No componente RootNavigator, adicione:
-
-useEffect(() => {
-  if (currentUser && !loading && !redirectionInProgress.current) {
-    const checkProfile = async () => {
-      try {
-        // Marcar que o redirecionamento está em andamento para evitar loops
-        redirectionInProgress.current = true;
-        
-        // Verificar perfil uma vez e usar o resultado
-        await reloadUserProfile();
-        console.log("Perfil verificado, aguardando navegação...");
-        
-        // Desmarcar após 1 segundo para evitar execução imediata
-        setTimeout(() => {
-          redirectionInProgress.current = false;
-        }, 1000);
-      } catch (error) {
-        console.error("Erro ao verificar perfil:", error);
-        // Desmarcar em caso de erro
-        redirectionInProgress.current = false;
-      }
-    };
-    
-    checkProfile();
-  }
-}, [currentUser, loading]);
-
-
-  useEffect(() => {
-    if (currentUser && userProfile) {
-      console.log("Estado do usuário - UID:", currentUser.uid);
-      console.log("Estado do perfil - Tipo:", userProfile.type);
-      console.log("Estado do perfil - Completo:", userProfile.profileComplete);
-      console.log("Estado do perfil - Status:", userProfile.status);
-    }
-  }, [currentUser, userProfile]);
-  
-  // Debugar estado atual
-  useEffect(() => {
-    if (currentUser) {
-      console.log('Usuário logado:', currentUser.uid);
-      console.log('Perfil:', userProfile);
-      if (userProfile) {
-        console.log('Precisa de aprovação:', needsApproval());
-        console.log('Precisa completar perfil:', needsProfileCompletion());
-      }
-    }
-  }, [currentUser, userProfile]);
-  
   if (loading) {
-    // Mostrar tela de carregamento
     return <LoadingOverlay />;
   }
+
 
   return (
     <Stack.Navigator screenOptions={{

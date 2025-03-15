@@ -38,17 +38,19 @@ import LoadingOverlay from '../../components/LoadingOverlay';
 
 // Serviços
 import FirestoreService from '../../services/firestore.service';
+import StorageService from '../../services/storage.service';
 
 // Utilitários
 import { maskCPF, maskPhone } from '../../utils/masks';
-import { isValidEmail,isValidCPF } from '../../utils/validation';
+import { isValidEmail, isValidCPF } from '../../utils/validation';
 
 const { width } = Dimensions.get('window');
 
 const ResidentRegisterScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
-  const { currentUser, userProfile, updateProfile, setUserProfile, logout } = useAuth();  
+  const { currentUser, userProfile, updateProfile, setUserProfile, logout, cancelRegistration } = useAuth();
+  
   // Refs
   const scrollViewRef = useRef(null);
   
@@ -74,6 +76,7 @@ const ResidentRegisterScreen = () => {
     // Dados de residência
     condoId: '',
     condoName: '',
+    condoAddress: '',
     block: '',
     unit: '',
     
@@ -143,10 +146,29 @@ const ResidentRegisterScreen = () => {
   
   // Atualizar dados do formulário
   const updateResidentData = (field, value) => {
-    setResidentData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setResidentData(prev => {
+      // Criar uma cópia profunda para campos aninhados
+      const updated = JSON.parse(JSON.stringify(prev));
+      
+      // Atualizar campo aninhado (se necessário)
+      if (field.includes('.')) {
+        const parts = field.split('.');
+        let target = updated;
+        
+        // Navegar pela estrutura aninhada
+        for (let i = 0; i < parts.length - 1; i++) {
+          target = target[parts[i]];
+        }
+        
+        // Atualizar o campo mais profundo
+        target[parts[parts.length - 1]] = value;
+      } else {
+        // Atualizar campo normal
+        updated[field] = value;
+      }
+      
+      return updated;
+    });
     
     // Limpar erro do campo
     if (errors[field]) {
@@ -156,24 +178,12 @@ const ResidentRegisterScreen = () => {
   
   // Atualizar preferências de notificação
   const toggleNotificationPreference = (key) => {
-    setResidentData(prev => ({
-      ...prev,
-      notificationPreferences: {
-        ...prev.notificationPreferences,
-        [key]: !prev.notificationPreferences[key]
-      }
-    }));
+    updateResidentData(`notificationPreferences.${key}`, !residentData.notificationPreferences[key]);
   };
   
   // Atualizar documentos
   const handleDocumentsChange = (docType, documents) => {
-    setResidentData(prev => ({
-      ...prev,
-      documents: {
-        ...prev.documents,
-        [docType]: documents
-      }
-    }));
+    updateResidentData(`documents.${docType}`, documents);
     
     // Limpar erro do campo
     if (errors[`documents.${docType}`]) {
@@ -184,11 +194,17 @@ const ResidentRegisterScreen = () => {
   // Selecionar condomínio
   const handleSelectCondo = (condo) => {
     if (condo) {
+      console.log("Condomínio selecionado:", condo);
+      
+      // Atualizar dados de condomínio
       updateResidentData('condoId', condo.id);
       updateResidentData('condoName', condo.name);
+      updateResidentData('condoAddress', condo.address || '');
     } else {
+      // Limpar dados se nenhum condomínio for selecionado
       updateResidentData('condoId', '');
       updateResidentData('condoName', '');
+      updateResidentData('condoAddress', '');
     }
   };
   
@@ -197,31 +213,28 @@ const ResidentRegisterScreen = () => {
     let stepErrors = {};
     let isValid = true;
     
-    
-     if (step === 1) {
-  // Validar dados pessoais
-  if (!residentData.name.trim()) {
-    stepErrors.name = 'Nome é obrigatório';
-    isValid = false;
-  }
-  
-  // Usar apenas a função isValidCPF para validação
-  const cleanCPF = residentData.cpf.replace(/\D/g, '');
-  if (!isValidCPF(cleanCPF)) {
-    stepErrors.cpf = 'CPF inválido';
-    isValid = false;
-  }
+    if (step === 1) {
+      // Validar dados pessoais
+      if (!residentData.name.trim()) {
+        stepErrors.name = 'Nome é obrigatório';
+        isValid = false;
+      }
       
-      if (!residentData.cpf || residentData.cpf.replace(/\D/g, '').length !== 11) {
+      // Usar função isValidCPF para validação
+      const cleanCPF = residentData.cpf.replace(/\D/g, '');
+      if (!isValidCPF(cleanCPF)) {
         stepErrors.cpf = 'CPF inválido';
         isValid = false;
       }
       
-      if (!residentData.phone || residentData.phone.replace(/\D/g, '').length < 10) {
+      // Validar telefone (pelo menos 10 dígitos)
+      const cleanPhone = residentData.phone.replace(/\D/g, '');
+      if (!cleanPhone || cleanPhone.length < 10) {
         stepErrors.phone = 'Telefone inválido';
         isValid = false;
       }
       
+      // Validar email
       if (!residentData.email || !isValidEmail(residentData.email)) {
         stepErrors.email = 'Email inválido';
         isValid = false;
@@ -312,48 +325,125 @@ const ResidentRegisterScreen = () => {
     }
   };
   
-  
-// Atualizar apenas a função handleCancel em src/screens/resident/ResidentRegisterScreen.js
-
-// Função simplificada para cancelar o cadastro e sair
-const handleCancel = () => {
-  Alert.alert(
-    "Cancelar Cadastro",
-    "Tem certeza que deseja cancelar o cadastro? Esta ação não pode ser desfeita.",
-    [
-      { text: "Não", style: "cancel" },
-      {
-        text: "Sim, cancelar",
-        onPress: async () => {
-          setLoading(true);
-          try {
-            if (currentUser) {
-              // Remover documentos que foram enviados ao Storage
-              if (residentData.documents) {
-                // Você poderia implementar uma função para apagar arquivos do Storage
-                // por exemplo: await StorageService.deleteUserFiles(currentUser.uid);
-              }
-              
-              // Usar a função do hook de autenticação para cancelar o registro
-              await cancelRegistration('resident');
-              
-              // Navegar para a tela de login
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }]
+  // Função para processar uploads de documentos
+  const processDocumentUploads = async () => {
+    try {
+      const uploadPromises = [];
+      const documentPaths = {};
+      
+      // Processar cada tipo de documento
+      for (const docType in residentData.documents) {
+        if (residentData.documents[docType] && residentData.documents[docType].length > 0) {
+          const docs = residentData.documents[docType];
+          documentPaths[docType] = [];
+          
+          for (const doc of docs) {
+            // Se o documento já tem URL, apenas inclua no resultado
+            if (doc.url) {
+              documentPaths[docType].push({
+                path: doc.path,
+                url: doc.url,
+                type: doc.type || 'image/jpeg',
+                name: doc.name || 'documento'
               });
+              continue;
             }
-          } catch (error) {
-            console.error("Erro ao cancelar cadastro:", error);
-            setError("Erro ao cancelar cadastro. Tente novamente.");
-            setShowError(true);
-            setLoading(false);
+            
+            // Se for um novo documento, faça upload
+            if (doc.uri) {
+              // Criar caminho único para o arquivo
+              const timestamp = Date.now();
+              const path = `users/${currentUser.uid}/documents/${docType}_${timestamp}`;
+              
+              // Adicionar promessa de upload à lista
+              const uploadPromise = StorageService.uploadFile(path, doc.uri)
+                .then(result => {
+                  // Adicionar documento carregado à lista
+                  documentPaths[docType].push({
+                    path: result.path,
+                    url: result.url,
+                    type: doc.type || 'image/jpeg',
+                    name: doc.name || `${docType}_${timestamp}`
+                  });
+                });
+              
+              uploadPromises.push(uploadPromise);
+            }
           }
         }
       }
-    ]
-  );
-};
+      
+      // Aguardar conclusão de todos os uploads
+      await Promise.all(uploadPromises);
+      return documentPaths;
+    } catch (error) {
+      console.error('Erro ao processar uploads de documentos:', error);
+      throw new Error('Falha ao enviar documentos. Tente novamente.');
+    }
+  };
+  
+  // Função para cancelar o cadastro
+  const handleCancel = () => {
+    Alert.alert(
+      "Cancelar Cadastro",
+      "Tem certeza que deseja cancelar o cadastro? Esta ação não pode ser desfeita.",
+      [
+        { text: "Não", style: "cancel" },
+        {
+          text: "Sim, cancelar",
+          onPress: async () => {
+            setLoading(true);
+            try {
+              if (currentUser) {
+                // Remover documentos que foram enviados ao Storage
+                try {
+                  for (const docType in residentData.documents) {
+                    const docs = residentData.documents[docType];
+                    if (docs && docs.length > 0) {
+                      for (const doc of docs) {
+                        if (doc.path) {
+                          // Remover arquivo do Storage
+                          await StorageService.deleteFile(doc.path);
+                        }
+                      }
+                    }
+                  }
+                } catch (storageError) {
+                  console.error("Erro ao remover arquivos:", storageError);
+                  // Continuar mesmo com erro
+                }
+                
+                // Usar a função do hook de autenticação para cancelar o registro
+                await cancelRegistration('resident');
+                
+                // Navegar para a tela de login
+               /* navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }]
+                });*/
+              }
+            } catch (error) {
+              console.error("Erro ao cancelar cadastro:", error);
+              setError("Erro ao cancelar cadastro. Tente novamente.");
+              setShowError(true);
+              
+              // Mesmo com erro, tentar voltar para o login
+              try {
+                await logout();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }]
+                });
+              } catch (e) {
+                setLoading(false);
+              }
+            }
+          }
+        }
+      ]
+    );
+  };
+  
   // Voltar para etapa anterior ou cancelar
   const prevStep = () => {
     if (step > 1) {
@@ -391,6 +481,7 @@ const handleCancel = () => {
     }
   };
   
+  // Enviar formulário
   const submitForm = async () => {
     try {
       setLoading(true);
@@ -399,7 +490,12 @@ const handleCancel = () => {
         throw new Error('Usuário não autenticado');
       }
       
-      // Preparar dados para envio no formato esperado pelo Firestore
+      // Processar uploads de documentos
+      console.log('Iniciando upload de documentos...');
+      const uploadedDocuments = await processDocumentUploads();
+      console.log('Uploads concluídos:', uploadedDocuments);
+      
+      // Preparar dados para envio
       const residentProfileData = {
         // Dados pessoais
         name: residentData.name,
@@ -410,11 +506,12 @@ const handleCancel = () => {
         // Dados de residência
         condoId: residentData.condoId,
         condoName: residentData.condoName,
+        condoAddress: residentData.condoAddress,
         block: residentData.block,
         unit: residentData.unit,
         
         // Documentos
-        documents: residentData.documents,
+        documents: uploadedDocuments,
         
         // Preferências
         notificationPreferences: residentData.notificationPreferences,
@@ -430,14 +527,14 @@ const handleCancel = () => {
       // Atualizar documento do morador no Firestore
       await FirestoreService.updateDocument('residents', currentUser.uid, residentProfileData);
       
-      // Atualizar perfil geral (auth)
+      // Atualizar perfil geral
       await updateProfile({
         displayName: residentData.name,
         profileComplete: true,
         status: 'pending_verification'
       });
       
-      // Também atualizar o documento de usuário para consistência
+      // Atualizar documento de usuário para consistência
       await FirestoreService.updateDocument('users', currentUser.uid, {
         displayName: residentData.name,
         profileComplete: true,
@@ -454,11 +551,13 @@ const handleCancel = () => {
         status: 'pending_verification'
       });
       
-      // Mostrar mensagem de sucesso e navegar
+      // Mostrar mensagem de sucesso
       Alert.alert(
         'Cadastro Enviado',
         'Suas informações foram enviadas e estão em análise. Por favor, aguarde a aprovação do seu condomínio.',
-        [{ text: 'OK' }] // Remova a navegação explícita
+        [{ 
+          text: 'OK' 
+        }]
       );
     } catch (error) {
       console.error('Erro ao enviar formulário:', error);
@@ -507,12 +606,7 @@ const handleCancel = () => {
         <TextInput
           label="CPF *"
           value={residentData.cpf}
-          onChangeText={(text) => {
-            const masked = maskCPF(text);
-            console.log("CPF antes da máscara:", text);
-            console.log("CPF após máscara:", masked);
-            updateResidentData('cpf', masked);
-          }}
+          onChangeText={(text) => updateResidentData('cpf', maskCPF(text))}
           mode="outlined"
           error={!!errors.cpf}
           style={styles.input}
@@ -767,7 +861,7 @@ const handleCancel = () => {
         return renderStep2();
       case 3:
         return renderStep3();
-      default:
+      default:a
         return null;
     }
   };
@@ -785,23 +879,23 @@ const handleCancel = () => {
       >
         {/* Cabeçalho com progresso */}
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={prevStep}
-            style={styles.backButton}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000000" />
-          </TouchableOpacity>
+        <TouchableOpacity
+  onPress={prevStep}
+  style={styles.backButton}
+>
+  <MaterialCommunityIcons name="arrow-left" size={24} color="#000000" />
+</TouchableOpacity>
           
-          <View style={styles.progressContainer}>
-            <ProgressBar
-              progress={step / 3}
-              color={theme.colors.primary}
-              style={styles.progressBar}
-            />
-            <Text style={styles.progressText}>
-              Etapa {step} de 3: {getStepTitle()}
-            </Text>
-          </View>
+<View style={styles.progressContainer}>
+  <ProgressBar
+    progress={step / 3}
+    color={theme.colors.primary}
+    style={styles.progressBar}
+  />
+  <Text style={styles.progressText}>
+    Etapa {step} de 3: {getStepTitle()}
+  </Text>
+</View>
         </View>
         
         {/* Conteúdo do formulário */}

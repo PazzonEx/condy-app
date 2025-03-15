@@ -11,7 +11,8 @@ import {
   Keyboard,
   StatusBar,
   Platform,
-  SafeAreaView
+  SafeAreaView,
+  ActivityIndicator
 } from 'react-native';
 import { 
   Text, 
@@ -23,21 +24,19 @@ import {
   Surface,
   IconButton,
   Divider,
-  RadioButton,
   Card
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import * as Animatable from 'react-native-animatable';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
 
 // Componentes
 import DocumentUpload from '../../components/DocumentUpload';
-import LoadingOverlay from '../../components/LoadingOverlay';
 import CondoAddressSearch from '../../components/CondoAddressSearch';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 // Serviços
 import FirestoreService from '../../services/firestore.service';
@@ -45,7 +44,7 @@ import StorageService from '../../services/storage.service';
 import PaymentService from '../../services/payment.service';
 
 // Utilitários
-import { maskPhone, maskCNPJ, maskCEP } from '../../utils/masks';
+import { maskCNPJ, maskPhone, maskCEP } from '../../utils/masks';
 import { isValidEmail, isValidCNPJ } from '../../utils/validation';
 
 const { width } = Dimensions.get('window');
@@ -53,7 +52,7 @@ const { width } = Dimensions.get('window');
 const CondoRegisterScreen = () => {
   const theme = useTheme();
   const navigation = useNavigation();
-  const { currentUser, userProfile, updateProfile, setUserProfile, logout } = useAuth();
+  const { currentUser, userProfile, updateProfile, setUserProfile, logout, cancelRegistration } = useAuth();
   
   // Refs
   const scrollViewRef = useRef(null);
@@ -73,48 +72,49 @@ const CondoRegisterScreen = () => {
   const [errors, setErrors] = useState({});
   
   // Dados do formulário  
-const [condoData, setCondoData] = useState({
-  // Dados básicos (removemos o nome daqui)
-  cnpj: '',
-  phone: '',
-  email: userProfile?.email || '',
-  
-  // Endereço (adicionamos o nome aqui)
-  name: '', // Nome do condomínio movido para a etapa de endereço
-  address: '',
-  addressDetails: {
-    street: '',
-    number: '',
-    neighborhood: '',
-    city: '',
-    state: '',
-    postalCode: '',
-    latitude: null,
-    longitude: null
-  },
-  
-  // Dados do condomínio (novos campos)
-  condoInfo: {
-    blocks: '', // Número de blocos
-    units: '', // Número de unidades
-  },
-  
-  // Dados administrativos
-  adminName: '',
-  adminPhone: '',
-  adminEmail: '',
-  
-  // Plano
-  selectedPlan: 'basic',
-  
-  // Documentos
-  documents: {
-    condoRegistration: [],
-    adminDocument: [],
-    condoPhoto: []
-  }
-});
-  // Efeito para monitorar teclado
+  const [condoData, setCondoData] = useState({
+    // Dados básicos
+    cnpj: '',
+    phone: '',
+    email: userProfile?.email || '',
+    
+    // Endereço
+    name: '', // Nome do condomínio
+    address: '',
+    addressDetails: {
+      street: '',
+      number: '',
+      neighborhood: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      latitude: null,
+      longitude: null
+    },
+    placeId: '',
+    
+    // Dados do condomínio
+    condoInfo: {
+      blocks: '',
+      units: '',
+    },
+    
+    // Dados administrativos
+    adminName: '',
+    adminPhone: '',
+    adminEmail: '',
+    
+    // Plano
+    selectedPlan: 'basic',
+    
+    // Documentos
+    documents: {
+      condoRegistration: [],
+      adminDocument: [],
+      condoPhoto: []
+    }
+  });
+  // Efeito para monitorar teclado e carregar planos
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -182,33 +182,41 @@ const [condoData, setCondoData] = useState({
   };
   
   // Atualizar dados do condomínio - versão mais robusta
-const updateCondoData = (field, value) => {
-  console.log(`Atualizando campo ${field} com valor:`, value);
-  
-  setCondoData(prev => {
-    // Criar cópia do estado para garantir nova referência
-    const newState = JSON.parse(JSON.stringify(prev));
+  const updateCondoData = (field, value) => {
+    console.log(`Atualizando campo ${field} com valor:`, value);
     
-    // Para campos aninhados (como addressDetails.street)
-    if (field.includes('.')) {
-      const [parentField, childField] = field.split('.');
-      if (!newState[parentField]) {
-        newState[parentField] = {};
+    setCondoData(prev => {
+      // Criar uma cópia profunda do estado para campos aninhados
+      const newState = JSON.parse(JSON.stringify(prev));
+      
+      // Para campos aninhados (como addressDetails.street)
+      if (field.includes('.')) {
+        const parts = field.split('.');
+        let target = newState;
+        
+        // Navegando pela estrutura aninhada
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!target[parts[i]]) {
+            target[parts[i]] = {};
+          }
+          target = target[parts[i]];
+        }
+        
+        // Atualizar o campo final
+        target[parts[parts.length - 1]] = value;
+      } else {
+        // Para campos normais
+        newState[field] = value;
       }
-      newState[parentField][childField] = value;
-    } else {
-      // Para campos normais
-      newState[field] = value;
-    }
+      
+      return newState;
+    });
     
-    return newState;
-  });
-  
-  // Limpar erro do campo
-  if (errors[field]) {
-    setErrors(prev => ({ ...prev, [field]: null }));
-  }
-};
+    // Limpar erro do campo
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: null }));
+    }
+  };
   
   // Atualizar documentos
   const handleDocumentsChange = (docType, documents) => {
@@ -226,24 +234,49 @@ const updateCondoData = (field, value) => {
     }
   };
   
-  // Selecionar endereço via Google Places
-  const handleSelectAddress = (address) => {
-    if (address) {
-      updateCondoData('address', address.formattedAddress || '');
+  // Selecionar endereço
+  const handleSelectAddress = (addressData) => {
+    if (addressData) {
+      console.log("Endereço selecionado:", addressData);
       
-      // Atualizar detalhes do endereço
-      updateCondoData('addressDetails.street', address.street || '');
-      updateCondoData('addressDetails.number', address.number || '');
-      updateCondoData('addressDetails.neighborhood', address.neighborhood || '');
-      updateCondoData('addressDetails.city', address.city || '');
-      updateCondoData('addressDetails.state', address.state || '');
-      updateCondoData('addressDetails.postalCode', address.postalCode || '');
-      
-      // Atualizar coordenadas
-      if (address.latitude && address.longitude) {
-        updateCondoData('addressDetails.latitude', address.latitude);
-        updateCondoData('addressDetails.longitude', address.longitude);
+      // Verificar se já existe um condomínio cadastrado neste endereço
+      if (addressData.existingCondo) {
+        Alert.alert(
+          "Condomínio já cadastrado",
+          "Este condomínio já está cadastrado em nosso sistema. Por favor, entre em contato com a administração.",
+          [{ text: "OK" }]
+        );
+        return;
       }
+      
+      // Resetar campos para evitar dados antigos
+      const resetAddressFields = () => {
+        // Atualizar os campos com os novos dados
+        updateCondoData('address', addressData.formattedAddress || '');
+        updateCondoData('name', addressData.name || addressData.suggestedName || '');
+        
+        // Atualizar detalhes do endereço
+        updateCondoData('addressDetails.street', addressData.street || '');
+        updateCondoData('addressDetails.number', addressData.number || '');
+        updateCondoData('addressDetails.neighborhood', addressData.neighborhood || '');
+        updateCondoData('addressDetails.city', addressData.city || '');
+        updateCondoData('addressDetails.state', addressData.state || '');
+        updateCondoData('addressDetails.postalCode', addressData.postalCode || '');
+        
+        // Atualizar coordenadas
+        if (addressData.latitude && addressData.longitude) {
+          updateCondoData('addressDetails.latitude', addressData.latitude);
+          updateCondoData('addressDetails.longitude', addressData.longitude);
+        }
+        
+        // Armazenar placeId para referência
+        if (addressData.placeId) {
+          updateCondoData('placeId', addressData.placeId);
+        }
+      };
+      
+      // Executar após um breve delay para garantir a atualização do estado
+      setTimeout(resetAddressFields, 10);
     }
   };
   
@@ -253,7 +286,7 @@ const updateCondoData = (field, value) => {
     let isValid = true;
     
     if (step === 1) {
-      // Validar dados básicos (sem o nome)
+      // Validar dados básicos
       const cleanCNPJ = condoData.cnpj.replace(/\D/g, '');
       if (!isValidCNPJ(cleanCNPJ)) {
         stepErrors.cnpj = 'CNPJ inválido';
@@ -339,6 +372,7 @@ const updateCondoData = (field, value) => {
     setErrors(stepErrors);
     return isValid;
   };
+  
   // Avançar para próxima etapa
   const nextStep = () => {
     if (validateStep()) {
@@ -391,41 +425,54 @@ const updateCondoData = (field, value) => {
       }
     }
   };
-  
-  // Voltar para etapa anterior
-  const prevStep = () => {
-    if (step > 1) {
-      // Animar transição
-      Animated.sequence([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true
-        }),
-        Animated.timing(translateYAnim, {
-          toValue: -50,
-          duration: 1,
-          useNativeDriver: true
-        })
-      ]).start(() => {
-        setStep(prev => prev - 1);
-        
-        // Resetar animações
-        translateYAnim.setValue(0);
-        
-        // Animar entrada do próximo step
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true
-        }).start();
-      });
+  // Função auxiliar para processar uploads de documentos
+  const processDocumentUploads = async () => {
+    try {
+      const uploadPromises = [];
+      const documentPaths = {};
       
-      // Rolar para o topo
-      scrollToTop();
-    } else {
-      // Se estiver na primeira etapa, mostrar diálogo de confirmação
-      handleCancel();
+      // Processar cada tipo de documento
+      for (const docType in condoData.documents) {
+        if (condoData.documents[docType] && condoData.documents[docType].length > 0) {
+          const docs = condoData.documents[docType];
+          documentPaths[docType] = [];
+          
+          for (const doc of docs) {
+            // Documento já enviado
+            if (doc.url) {
+              documentPaths[docType].push({
+                path: doc.path,
+                url: doc.url,
+                type: doc.type || 'image/jpeg',
+                name: doc.name || 'documento'
+              });
+              continue;
+            }
+            
+            // Novo documento
+            if (doc.uri) {
+              const path = `users/${currentUser.uid}/documents/${docType}_${Date.now()}`;
+              const uploadPromise = StorageService.uploadFile(path, doc.uri)
+                .then(result => {
+                  documentPaths[docType].push({
+                    path: result.path,
+                    url: result.url,
+                    type: doc.type || 'image/jpeg',
+                    name: doc.name || 'documento'
+                  });
+                });
+              
+              uploadPromises.push(uploadPromise);
+            }
+          }
+        }
+      }
+      
+      await Promise.all(uploadPromises);
+      return documentPaths;
+    } catch (error) {
+      console.error('Erro ao processar uploads de documentos:', error);
+      throw new Error('Falha ao enviar documentos. Tente novamente.');
     }
   };
   
@@ -448,6 +495,24 @@ const updateCondoData = (field, value) => {
               if (currentUser) {
                 // 1. Tentar excluir documentos do Firestore
                 const userType = 'condo';
+                
+                // Remover documentos que foram enviados ao Storage
+                try {
+                  for (const docType in condoData.documents) {
+                    const docs = condoData.documents[docType];
+                    if (docs && docs.length > 0) {
+                      for (const doc of docs) {
+                        if (doc.path) {
+                          // Remover arquivo do Storage
+                          await StorageService.deleteFile(doc.path);
+                        }
+                      }
+                    }
+                  }
+                } catch (storageError) {
+                  console.error("Erro ao remover arquivos:", storageError);
+                  // Continuar mesmo com erro
+                }
                 
                 // Excluir documento específico do tipo
                 try {
@@ -494,151 +559,144 @@ const updateCondoData = (field, value) => {
     );
   };
   
-
-// Enviar formulário
-const submitForm = async () => {
-  try {
-    setLoading(true);
-    
-    if (!currentUser) {
-      throw new Error('Usuário não autenticado');
-    }
-    
-    // Processar uploads de documentos
-    const uploadedDocuments = await processDocumentUploads();
-    
-    // Preparar dados para envio
-    const condoProfileData = {
-      // Dados básicos
-      name: condoData.name,
-      cnpj: condoData.cnpj.replace(/\D/g, ''),
-      phone: condoData.phone.replace(/\D/g, ''),
-      email: condoData.email,
-      
-      // Endereço
-      address: condoData.address,
-      addressDetails: condoData.addressDetails,
-      placeId: condoData.placeId || '',
-      
-      // Informações do condomínio
-      condoInfo: {
-        blocks: parseInt(condoData.condoInfo.blocks) || 0,
-        units: parseInt(condoData.condoInfo.units) || 0,
-      },
-      
-      // Dados administrativos
-      adminInfo: {
-        name: condoData.adminName,
-        phone: condoData.adminPhone.replace(/\D/g, ''),
-        email: condoData.adminEmail
-      },
-      
-      // Plano e assinatura
-      subscription: {
-        plan: condoData.selectedPlan,
-        status: 'pending',
-        startDate: null,
-        endDate: null
-      },
-      
-      // Documentos
-      documents: uploadedDocuments,
-      
-      // Status e metadados
-      status: 'pending_verification',
-      verificationStatus: 'pending',
-      profileComplete: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    // Atualizar documento do condomínio no Firestore
-    await FirestoreService.updateDocument('condos', currentUser.uid, condoProfileData);
-    
-    // Atualizar perfil de usuário
-    await updateProfile({
-      displayName: condoData.name,
-      profileComplete: true,
-      status: 'pending_verification'
-    });
-    
-    // Atualizar documento de usuário para consistência
-    await FirestoreService.updateDocument('users', currentUser.uid, {
-      displayName: condoData.name,
-      profileComplete: true,
-      status: 'pending_verification',
-      updatedAt: new Date().toISOString()
-    });
-    
-    // Atualizar o estado do contexto de autenticação
-    const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
-    setUserProfile({
-      ...userProfile,
-      ...userDoc,
-      profileComplete: true,
-      status: 'pending_verification'
-    });
-    
-    // Mostrar mensagem de sucesso
-    Alert.alert(
-      'Cadastro Enviado',
-      'As informações do condomínio foram enviadas e estão em análise. Você receberá uma notificação quando o cadastro for aprovado.',
-      [{ text: 'OK', onPress: () => navigation.navigate('CondoHome') }]
-    );
-  } catch (error) {
-    console.error('Erro ao enviar formulário:', error);
-    setError('Erro ao salvar seus dados. Tente novamente.');
-    setShowError(true);
-  } finally {
-    setLoading(false);
-  }
-};
-
-// Função auxiliar para processar uploads de documentos
-const processDocumentUploads = async () => {
-  // Similar à implementação para DriverRegisterScreen
-  const uploadPromises = [];
-  const documentPaths = {};
-  
-  for (const docType in condoData.documents) {
-    if (condoData.documents[docType] && condoData.documents[docType].length > 0) {
-      const docs = condoData.documents[docType];
-      documentPaths[docType] = [];
-      
-      for (const doc of docs) {
-        // Documento já enviado
-        if (doc.url) {
-          documentPaths[docType].push({
-            path: doc.path,
-            url: doc.url,
-            type: doc.type || 'image/jpeg',
-            name: doc.name || 'documento'
-          });
-          continue;
-        }
+  // Voltar para etapa anterior ou cancelar
+  const prevStep = () => {
+    if (step > 1) {
+      // Animar transição
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true
+        }),
+        Animated.timing(translateYAnim, {
+          toValue: -50,
+          duration: 1,
+          useNativeDriver: true
+        })
+      ]).start(() => {
+        setStep(prev => prev - 1);
         
-        // Novo documento
-        if (doc.uri) {
-          const path = `documents/${currentUser.uid}/${docType}_${Date.now()}`;
-          const uploadPromise = StorageService.uploadFile(path, doc.uri)
-            .then(result => {
-              documentPaths[docType].push({
-                path: result.path,
-                url: result.url,
-                type: doc.type || 'image/jpeg',
-                name: doc.name || 'documento'
-              });
-            });
-          
-          uploadPromises.push(uploadPromise);
-        }
-      }
+        // Resetar animações
+        translateYAnim.setValue(0);
+        
+        // Animar entrada do próximo step
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true
+        }).start();
+      });
+      
+      // Rolar para o topo
+      scrollToTop();
+    } else {
+      // Se estiver na primeira etapa, mostrar diálogo de confirmação
+      handleCancel();
     }
-  }
+  };
   
-  await Promise.all(uploadPromises);
-  return documentPaths;
-};
+  // Enviar formulário
+  const submitForm = async () => {
+    try {
+      setLoading(true);
+      
+      if (!currentUser) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // Processar uploads de documentos
+      console.log('Iniciando upload de documentos...');
+      const uploadedDocuments = await processDocumentUploads();
+      console.log('Uploads concluídos:', uploadedDocuments);
+      
+      // Preparar dados para envio
+      const condoProfileData = {
+        // Dados básicos
+        name: condoData.name,
+        cnpj: condoData.cnpj.replace(/\D/g, ''),
+        phone: condoData.phone.replace(/\D/g, ''),
+        email: condoData.email,
+        
+        // Endereço
+        address: condoData.address,
+        addressDetails: condoData.addressDetails,
+        placeId: condoData.placeId || '',
+        
+        // Informações do condomínio
+        condoInfo: {
+          blocks: parseInt(condoData.condoInfo.blocks) || 0,
+          units: parseInt(condoData.condoInfo.units) || 0,
+        },
+        
+        // Dados administrativos
+        adminInfo: {
+          name: condoData.adminName,
+          phone: condoData.adminPhone.replace(/\D/g, ''),
+          email: condoData.adminEmail
+        },
+        
+        // Plano e assinatura
+        subscription: {
+          plan: condoData.selectedPlan,
+          status: 'pending',
+          startDate: null,
+          endDate: null
+        },
+        
+        // Documentos
+        documents: uploadedDocuments,
+        
+        // Status e metadados
+        status: 'pending_verification',
+        verificationStatus: 'pending',
+        profileComplete: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Atualizar documento do condomínio no Firestore
+      await FirestoreService.updateDocument('condos', currentUser.uid, condoProfileData);
+      
+      // Atualizar perfil de usuário
+      await updateProfile({
+        displayName: condoData.name,
+        profileComplete: true,
+        status: 'pending_verification'
+      });
+      
+      // Atualizar documento de usuário para consistência
+      await FirestoreService.updateDocument('users', currentUser.uid, {
+        displayName: condoData.name,
+        profileComplete: true,
+        status: 'pending_verification',
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Atualizar o estado do contexto de autenticação
+      const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
+      setUserProfile({
+        ...userProfile,
+        ...userDoc,
+        profileComplete: true,
+        status: 'pending_verification'
+      });
+      
+      // Mostrar mensagem de sucesso
+      Alert.alert(
+        'Cadastro Enviado',
+        'As informações do condomínio foram enviadas e estão em análise. Você receberá uma notificação quando o cadastro for aprovado.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Erro ao enviar formulário:', error);
+      setError('Erro ao salvar seus dados. Tente novamente.');
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   // Obter título da etapa atual
   const getStepTitle = () => {
     switch (step) {
@@ -655,397 +713,302 @@ const processDocumentUploads = async () => {
       default:
         return '';
     }
-  };// Renderizar formulário da etapa 1 (Informações Básicas)
-const renderStep1 = () => (
-  <View style={styles.stepContainer}>
-    {/* CNPJ */}
-    <View style={styles.inputContainer}>
-      <TextInput
-        label="CNPJ *"
-        value={condoData.cnpj}
-        onChangeText={(text) => updateCondoData('cnpj', maskCNPJ(text))}
-        mode="outlined"
-        error={!!errors.cnpj}
-        style={styles.input}
-        keyboardType="numeric"
-        maxLength={18}
-        placeholder="XX.XXX.XXX/XXXX-XX"
-        left={<TextInput.Icon icon="card-account-details" />}
-      />
-      {errors.cnpj && <Text style={styles.errorText}>{errors.cnpj}</Text>}
-    </View>
-    
-    {/* Telefone */}
-    <View style={styles.inputContainer}>
-      <TextInput
-        label="Telefone *"
-        value={condoData.phone}
-        onChangeText={(text) => updateCondoData('phone', maskPhone(text))}
-        mode="outlined"
-        error={!!errors.phone}
-        style={styles.input}
-        keyboardType="phone-pad"
-        maxLength={15}
-        placeholder="(00) 00000-0000"
-        left={<TextInput.Icon icon="phone" />}
-      />
-      {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-    </View>
-    
-    {/* Email */}
-    <View style={styles.inputContainer}>
-      <TextInput
-        label="Email *"
-        value={condoData.email}
-        onChangeText={(text) => updateCondoData('email', text)}
-        mode="outlined"
-        error={!!errors.email}
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        placeholder="condominio@exemplo.com"
-        left={<TextInput.Icon icon="email" />}
-        disabled={!!userProfile?.email}
-      />
-      {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-    </View>
-    
-    <View style={styles.infoContainer}>
-      <MaterialCommunityIcons name="information-outline" size={20} color="#757575" />
-      <Text style={styles.infoText}>
-        Estas informações serão utilizadas para identificar seu condomínio no aplicativo e para comunicações importantes.
-      </Text>
-    </View>
-  </View>
-);
+  };
   
-// Renderizar formulário da etapa 2 (Endereço)
-// Atualizar a função para lidar com a seleção do condomínio
-const handleSelectCondo = (condo) => {
-  if (condo) {
-    console.log("Condomínio selecionado:", condo);
-    
-    // Atualizar dados básicos
-    // Se for um novo condomínio, manter o nome que o usuário já digitou
-    if (!condo.inSystem) {
-      updateCondoData('address', condo.address || '');
-    } else {
-      // Se for condomínio existente, pegar nome e endereço dele
-      updateCondoData('name', condo.name || condoData.name);
-      updateCondoData('address', condo.address || '');
-    }
-    
-    // Extrair e atualizar dados de endereço
-    if (condo.address) {
-      // Processar componentes de endereço
-      let street = '';
-      let number = '';
-      let neighborhood = '';
-      let city = '';
-      let state = '';
-      let postalCode = '';
+  // Renderizar formulário da etapa 1 (Informações Básicas)
+  const renderStep1 = () => (
+    <View style={styles.stepContainer}>
+      {/* CNPJ */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          label="CNPJ *"
+          value={condoData.cnpj}
+          onChangeText={(text) => updateCondoData('cnpj', maskCNPJ(text))}
+          mode="outlined"
+          error={!!errors.cnpj}
+          style={styles.input}
+          keyboardType="numeric"
+          maxLength={18}
+          placeholder="XX.XXX.XXX/XXXX-XX"
+          left={<TextInput.Icon icon="card-account-details" />}
+        />
+        {errors.cnpj && <Text style={styles.errorText}>{errors.cnpj}</Text>}
+      </View>
       
-      // Extrair componentes do endereço
-      const addressParts = condo.address.split(',').map(part => part.trim());
+      {/* Telefone */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          label="Telefone *"
+          value={condoData.phone}
+          onChangeText={(text) => updateCondoData('phone', maskPhone(text))}
+          mode="outlined"
+          error={!!errors.phone}
+          style={styles.input}
+          keyboardType="phone-pad"
+          maxLength={15}
+          placeholder="(00) 00000-0000"
+          left={<TextInput.Icon icon="phone" />}
+        />
+        {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+      </View>
       
-      if (addressParts.length >= 1) {
-        // Primeira parte geralmente é rua e número
-        const firstPart = addressParts[0];
-        const numberMatch = firstPart.match(/(\d+)/);
-        
-        if (numberMatch) {
-          number = numberMatch[0];
-          street = firstPart.replace(number, '').trim();
-        } else {
-          street = firstPart;
-        }
-      }
+      {/* Email */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          label="Email *"
+          value={condoData.email}
+          onChangeText={(text) => updateCondoData('email', text)}
+          mode="outlined"
+          error={!!errors.email}
+          style={styles.input}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          placeholder="condominio@exemplo.com"
+          left={<TextInput.Icon icon="email" />}
+          disabled={!!userProfile?.email}
+        />
+        {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+      </View>
       
-      if (addressParts.length >= 2) {
-        // Segunda parte geralmente é o bairro
-        neighborhood = addressParts[1];
-      }
+      <View style={styles.infoContainer}>
+        <MaterialCommunityIcons name="information-outline" size={20} color="#757575" />
+        <Text style={styles.infoText}>
+          Estas informações serão utilizadas para identificar seu condomínio no aplicativo e para comunicações importantes.
+        </Text>
+      </View>
+    </View>
+  );
+  
+  // Renderizar formulário da etapa 2 (Endereço)
+  const renderStep2 = () => (
+    <View style={styles.stepContainer}>
+      {/* Busca de endereço via Google Places */}
+      <Text style={styles.sectionTitle}>Buscar endereço do condomínio *</Text>
+      <Text style={styles.sectionSubtitle}>
+        Procure o endereço exato do condomínio para facilitar o acesso de motoristas e entregadores
+      </Text>
       
-      if (addressParts.length >= 3) {
-        // Terceira parte geralmente é cidade
-        city = addressParts[2];
-      }
-      
-      if (addressParts.length >= 4) {
-        // Quarta parte geralmente é estado e CEP
-        const lastPart = addressParts[addressParts.length - 1];
-        const stateMatch = lastPart.match(/([A-Z]{2})/);
-        const postalCodeMatch = lastPart.match(/\d{5}(-\d{3})?/);
-        
-        if (stateMatch) {
-          state = stateMatch[1];
-        }
-        
-        if (postalCodeMatch) {
-          postalCode = postalCodeMatch[0];
-        }
-      }
-      
-      // Atualizar os campos de endereço
-      updateCondoData('addressDetails.street', street);
-      updateCondoData('addressDetails.number', number);
-      updateCondoData('addressDetails.neighborhood', neighborhood);
-      updateCondoData('addressDetails.city', city);
-      updateCondoData('addressDetails.state', state);
-      updateCondoData('addressDetails.postalCode', postalCode);
-    }
-    
-    // Atualizar coordenadas se disponíveis
-    if (condo.latitude && condo.longitude) {
-      updateCondoData('addressDetails.latitude', condo.latitude);
-      updateCondoData('addressDetails.longitude', condo.longitude);
-    }
-  }
-};
-
-// Renderizar formulário da etapa 2 (Endereço)
-// Renderizar formulário da etapa 2 (Endereço)
-const renderStep2 = () => (
-  <View style={styles.stepContainer}>
-    {/* Busca de endereço via Google Places */}
-    <Text style={styles.sectionTitle}>Buscar endereço do condomínio *</Text>
-    <Text style={styles.sectionSubtitle}>
-      Procure o endereço exato do condomínio para facilitar o acesso de motoristas e entregadores
-    </Text>
-    
-    <CondoAddressSearch
-  initialValue={condoData.address}
-  placeholder="Digite o endereço ou nome do condomínio"
+      <CondoAddressSearch
   onSelectAddress={(addressData) => {
     if (addressData) {
       console.log("Endereço selecionado:", addressData);
       
-      // Se for um condomínio existente, alerta o usuário
+      // Verificar se já existe um condomínio cadastrado neste endereço
       if (addressData.existingCondo) {
         Alert.alert(
           "Condomínio já cadastrado",
-          "Este condomínio já está cadastrado em nosso sistema. Por favor, realize o login ou cadastre outro condomínio.",
+          "Este condomínio já está cadastrado em nosso sistema. Por favor, entre em contato com a administração.",
           [{ text: "OK" }]
         );
         return;
       }
       
-      // Limpar campos existentes antes de preencher novos valores
-      // Isso garante que os campos sejam atualizados mesmo quando já têm valores
-      updateCondoData('address', '');
-      updateCondoData('name', '');
-      updateCondoData('addressDetails.street', '');
-      updateCondoData('addressDetails.number', '');
-      updateCondoData('addressDetails.neighborhood', '');
-      updateCondoData('addressDetails.city', '');
-      updateCondoData('addressDetails.state', '');
-      updateCondoData('addressDetails.postalCode', '');
-      updateCondoData('addressDetails.latitude', null);
-      updateCondoData('addressDetails.longitude', null);
-      updateCondoData('placeId', '');
+      // Atualizar os dados do endereço no formulário
+      updateCondoData('address', addressData.formattedAddress || '');
+      updateCondoData('name', addressData.name || addressData.suggestedName || '');
       
-      // Pequeno atraso para garantir que os campos foram limpos antes de preencher novos valores
-      setTimeout(() => {
-        // Atualizar dados de endereço
-        updateCondoData('address', addressData.formattedAddress || '');
-        updateCondoData('addressDetails.street', addressData.street || '');
-        updateCondoData('addressDetails.number', addressData.number || '');
-        updateCondoData('addressDetails.neighborhood', addressData.neighborhood || '');
-        updateCondoData('addressDetails.city', addressData.city || '');
-        updateCondoData('addressDetails.state', addressData.state || '');
-        updateCondoData('addressDetails.postalCode', addressData.postalCode || '');
-        
-        // Atualizar coordenadas e placeId (para referência futura)
-        if (addressData.latitude && addressData.longitude) {
-          updateCondoData('addressDetails.latitude', addressData.latitude);
-          updateCondoData('addressDetails.longitude', addressData.longitude);
-        }
-        
-        if (addressData.placeId) {
-          updateCondoData('placeId', addressData.placeId);
-        }
-        
-        // Atualizar o nome do condomínio com o nome sugerido
-        if (addressData.suggestedName) {
-          updateCondoData('name', addressData.suggestedName);
-        }
-      }, 10);
+      // Atualizar detalhes do endereço
+      updateCondoData('addressDetails.street', addressData.street || '');
+      updateCondoData('addressDetails.number', addressData.number || '');
+      updateCondoData('addressDetails.neighborhood', addressData.neighborhood || '');
+      updateCondoData('addressDetails.city', addressData.city || '');
+      updateCondoData('addressDetails.state', addressData.state || '');
+      updateCondoData('addressDetails.postalCode', addressData.postalCode || '');
+      
+      // Atualizar coordenadas se disponíveis
+      if (addressData.latitude && addressData.longitude) {
+        updateCondoData('addressDetails.latitude', addressData.latitude);
+        updateCondoData('addressDetails.longitude', addressData.longitude);
+      }
+      
+      // Armazenar placeId para referência
+      if (addressData.placeId) {
+        updateCondoData('placeId', addressData.placeId);
+      }
     }
   }}
+  placeholder="Digite o endereço ou nome do condomínio"
+  initialValue={condoData.address || ""}
   style={styles.addressSearch}
+  maxResults={5}
+  debounceDelay={800}
+  showLoadingIndicator={true}
+  errorCallback={(error) => console.error("Erro na busca de endereço:", error)}
+  filterType="all" // Opções: "all", "nearby", "recent"
 />
-    {errors.address && <Text style={styles.errorText}>{errors.address}</Text>}
-    
-    {/* Exibir endereço selecionado */}
-    {condoData.address && (
-      <View style={styles.selectedAddressContainer}>
-        <MaterialCommunityIcons name="map-marker" size={24} color={theme.colors.primary} />
-        <View style={styles.selectedAddressDetails}>
-          <Text style={styles.selectedAddressText}>{condoData.address}</Text>
+      {errors.address && <Text style={styles.errorText}>{errors.address}</Text>}
+      
+      {/* Exibir endereço selecionado */}
+      {condoData.address && (
+        <View style={styles.selectedAddressContainer}>
+          <MaterialCommunityIcons name="map-marker" size={24} color={theme.colors.primary} />
+          <View style={styles.selectedAddressDetails}>
+            <Text style={styles.selectedAddressText}>{condoData.address}</Text>
+          </View>
+        </View>
+      )}
+      
+      {/* Nome do condomínio */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          label="Nome do condomínio *"
+          value={condoData.name}
+          onChangeText={(text) => updateCondoData('name', text)}
+          mode="outlined"
+          error={!!errors.name}
+          style={styles.input}
+          placeholder="Nome do condomínio"
+          left={<TextInput.Icon icon="office-building" />}
+        />
+        {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+      </View>
+      
+      {/* Campos de endereço detalhado */}
+      <Divider style={styles.divider} />
+      
+      <Text style={styles.sectionTitle}>Detalhes do endereço</Text>
+      <Text style={styles.sectionSubtitle}>
+        Confirme ou complete as informações abaixo
+      </Text>
+      
+      <View style={styles.rowContainer}>
+        <View style={[styles.inputContainer, { flex: 3, marginRight: 8 }]}>
+          <TextInput
+            label="Rua/Avenida *"
+            value={condoData.addressDetails.street}
+            onChangeText={(text) => updateCondoData('addressDetails.street', text)}
+            mode="outlined"
+            error={!!errors['addressDetails.street']}
+            style={styles.input}
+            left={<TextInput.Icon icon="road" />}
+          />
+          {errors['addressDetails.street'] && <Text style={styles.errorText}>{errors['addressDetails.street']}</Text>}
+        </View>
+        
+        <View style={[styles.inputContainer, { flex: 1 }]}>
+          <TextInput
+            label="Número *"
+            value={condoData.addressDetails.number}
+            onChangeText={(text) => updateCondoData('addressDetails.number', text)}
+            mode="outlined"
+            error={!!errors['addressDetails.number']}
+            style={styles.input}
+            keyboardType="numeric"
+            left={<TextInput.Icon icon="numeric" />}
+          />
+          {errors['addressDetails.number'] && <Text style={styles.errorText}>{errors['addressDetails.number']}</Text>}
         </View>
       </View>
-    )}
-    
-    {/* Nome do condomínio */}
-    <View style={styles.inputContainer}>
-      <TextInput
-        label="Nome do condomínio *"
-        value={condoData.name}
-        onChangeText={(text) => updateCondoData('name', text)}
-        mode="outlined"
-        error={!!errors.name}
-        style={styles.input}
-        placeholder="Nome do condomínio"
-        left={<TextInput.Icon icon="office-building" />}
-      />
-      {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
-    </View>
-    
-    {/* Campos de endereço detalhado */}
-    <Divider style={styles.divider} />
-    
-    <Text style={styles.sectionTitle}>Detalhes do endereço</Text>
-    <Text style={styles.sectionSubtitle}>
-      Confirme ou complete as informações abaixo
-    </Text>
-    
-    <View style={styles.rowContainer}>
-      <View style={[styles.inputContainer, { flex: 3, marginRight: 8 }]}>
-        <TextInput
-          label="Rua/Avenida *"
-          value={condoData.addressDetails.street}
-          onChangeText={(text) => updateCondoData('addressDetails.street', text)}
-          mode="outlined"
-          error={!!errors['addressDetails.street']}
-          style={styles.input}
-          left={<TextInput.Icon icon="road" />}
-        />
-        {errors['addressDetails.street'] && <Text style={styles.errorText}>{errors['addressDetails.street']}</Text>}
+      
+      <View style={styles.rowContainer}>
+        <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
+          <TextInput
+            label="Bairro *"
+            value={condoData.addressDetails.neighborhood}
+            onChangeText={(text) => updateCondoData('addressDetails.neighborhood', text)}
+            mode="outlined"
+            error={!!errors['addressDetails.neighborhood']}
+            style={styles.input}
+            left={<TextInput.Icon icon="home-city" />}
+          />
+          {errors['addressDetails.neighborhood'] && <Text style={styles.errorText}>{errors['addressDetails.neighborhood']}</Text>}
+        </View>
+        
+        <View style={[styles.inputContainer, { flex: 1 }]}>
+          <TextInput
+            label="CEP"
+            value={condoData.addressDetails.postalCode}
+            onChangeText={(text) => updateCondoData('addressDetails.postalCode', maskCEP(text))}
+            mode="outlined"
+            error={!!errors['addressDetails.postalCode']}
+            style={styles.input}
+            keyboardType="numeric"
+            maxLength={9}
+            left={<TextInput.Icon icon="map-marker" />}
+          />
+          {errors['addressDetails.postalCode'] && <Text style={styles.errorText}>{errors['addressDetails.postalCode']}</Text>}
+        </View>
       </View>
       
-      <View style={[styles.inputContainer, { flex: 1 }]}>
-        <TextInput
-          label="Número *"
-          value={condoData.addressDetails.number}
-          onChangeText={(text) => updateCondoData('addressDetails.number', text)}
-          mode="outlined"
-          error={!!errors['addressDetails.number']}
-          style={styles.input}
-          keyboardType="numeric"
-          left={<TextInput.Icon icon="numeric" />}
-        />
-        {errors['addressDetails.number'] && <Text style={styles.errorText}>{errors['addressDetails.number']}</Text>}
-      </View>
-    </View>
-    
-    <View style={styles.rowContainer}>
-      <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-        <TextInput
-          label="Bairro *"
-          value={condoData.addressDetails.neighborhood}
-          onChangeText={(text) => updateCondoData('addressDetails.neighborhood', text)}
-          mode="outlined"
-          error={!!errors['addressDetails.neighborhood']}
-          style={styles.input}
-          left={<TextInput.Icon icon="home-city" />}
-        />
-        {errors['addressDetails.neighborhood'] && <Text style={styles.errorText}>{errors['addressDetails.neighborhood']}</Text>}
-      </View>
-      
-      <View style={[styles.inputContainer, { flex: 1 }]}>
-        <TextInput
-          label="CEP"
-          value={condoData.addressDetails.postalCode}
-          onChangeText={(text) => updateCondoData('addressDetails.postalCode', maskCEP(text))}
-          mode="outlined"
-          error={!!errors['addressDetails.postalCode']}
-          style={styles.input}
-          keyboardType="numeric"
-          maxLength={9}
-          left={<TextInput.Icon icon="map-marker" />}
-        />
-        {errors['addressDetails.postalCode'] && <Text style={styles.errorText}>{errors['addressDetails.postalCode']}</Text>}
-      </View>
-    </View>
-    
-    <View style={styles.rowContainer}>
-      <View style={[styles.inputContainer, { flex: 2, marginRight: 8 }]}>
-        <TextInput
-          label="Cidade *"
-          value={condoData.addressDetails.city}
-          onChangeText={(text) => updateCondoData('addressDetails.city', text)}
-          mode="outlined"
-          error={!!errors['addressDetails.city']}
-          style={styles.input}
-          left={<TextInput.Icon icon="city" />}
-        />
-        {errors['addressDetails.city'] && <Text style={styles.errorText}>{errors['addressDetails.city']}</Text>}
+      <View style={styles.rowContainer}>
+        <View style={[styles.inputContainer, { flex: 2, marginRight: 8 }]}>
+          <TextInput
+            label="Cidade *"
+            value={condoData.addressDetails.city}
+            onChangeText={(text) => updateCondoData('addressDetails.city', text)}
+            mode="outlined"
+            error={!!errors['addressDetails.city']}
+            style={styles.input}
+            left={<TextInput.Icon icon="city" />}
+          />
+          {errors['addressDetails.city'] && <Text style={styles.errorText}>{errors['addressDetails.city']}</Text>}
+        </View>
+        
+        <View style={[styles.inputContainer, { flex: 1 }]}>
+          <TextInput
+            label="Estado *"
+            value={condoData.addressDetails.state}
+            onChangeText={(text) => updateCondoData('addressDetails.state', text)}
+            mode="outlined"
+            error={!!errors['addressDetails.state']}
+            style={styles.input}
+            maxLength={2}
+            autoCapitalize="characters"
+            left={<TextInput.Icon icon="map" />}
+          />
+          {errors['addressDetails.state'] && <Text style={styles.errorText}>{errors['addressDetails.state']}</Text>}
+        </View>
       </View>
       
-      <View style={[styles.inputContainer, { flex: 1 }]}>
-        <TextInput
-          label="Estado *"
-          value={condoData.addressDetails.state}
-          onChangeText={(text) => updateCondoData('addressDetails.state', text)}
-          mode="outlined"
-          error={!!errors['addressDetails.state']}
-          style={styles.input}
-          maxLength={2}
-          autoCapitalize="characters"
-          left={<TextInput.Icon icon="map" />}
-        />
-        {errors['addressDetails.state'] && <Text style={styles.errorText}>{errors['addressDetails.state']}</Text>}
-      </View>
-    </View>
-    
-    {/* Informações do condomínio */}
-    <Divider style={styles.divider} />
-    
-    <Text style={styles.sectionTitle}>Informações do condomínio</Text>
-    <Text style={styles.sectionSubtitle}>
-      Informe o número de blocos e unidades do seu condomínio
-    </Text>
-    
-    <View style={styles.rowContainer}>
-      <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-        <TextInput
-          label="Número de blocos/torres *"
-          value={condoData.condoInfo.blocks}
-          onChangeText={(text) => updateCondoData('condoInfo.blocks', text)}
-          mode="outlined"
-          error={!!errors['condoInfo.blocks']}
-          style={styles.input}
-          keyboardType="numeric"
-          placeholder="Ex: 4"
-          left={<TextInput.Icon icon="office-building-marker" />}
-        />
-        {errors['condoInfo.blocks'] && <Text style={styles.errorText}>{errors['condoInfo.blocks']}</Text>}
-      </View>
+      {/* Informações do condomínio */}
+      <Divider style={styles.divider} />
       
-      <View style={[styles.inputContainer, { flex: 1 }]}>
-        <TextInput
-          label="Número de unidades *"
-          value={condoData.condoInfo.units}
-          onChangeText={(text) => updateCondoData('condoInfo.units', text)}
-          mode="outlined"
-          error={!!errors['condoInfo.units']}
-          style={styles.input}
-          keyboardType="numeric"
-          placeholder="Ex: 120"
-          left={<TextInput.Icon icon="door" />}
-        />
-        {errors['condoInfo.units'] && <Text style={styles.errorText}>{errors['condoInfo.units']}</Text>}
-      </View>
-    </View>
-    
-    <View style={styles.infoContainer}>
-      <MaterialCommunityIcons name="information-outline" size={20} color="#757575" />
-      <Text style={styles.infoText}>
-        Estas informações ajudarão a configurar seu condomínio de forma adequada no sistema e facilitarão o acesso dos moradores.
+      <Text style={styles.sectionTitle}>Informações do condomínio</Text>
+      <Text style={styles.sectionSubtitle}>
+        Informe o número de blocos e unidades do seu condomínio
       </Text>
+      
+      <View style={styles.rowContainer}>
+        <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
+          <TextInput
+            label="Número de blocos/torres *"
+            value={condoData.condoInfo.blocks}
+            onChangeText={(text) => updateCondoData('condoInfo.blocks', text)}
+            mode="outlined"
+            error={!!errors['condoInfo.blocks']}
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="Ex: 4"
+            left={<TextInput.Icon icon="office-building-marker" />}
+          />
+          {errors['condoInfo.blocks'] && <Text style={styles.errorText}>{errors['condoInfo.blocks']}</Text>}
+        </View>
+        
+        <View style={[styles.inputContainer, { flex: 1 }]}>
+          <TextInput
+            label="Número de unidades *"
+            value={condoData.condoInfo.units}
+            onChangeText={(text) => updateCondoData('condoInfo.units', text)}
+            mode="outlined"
+            error={!!errors['condoInfo.units']}
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="Ex: 120"
+            left={<TextInput.Icon icon="door" />}
+          />
+          {errors['condoInfo.units'] && <Text style={styles.errorText}>{errors['condoInfo.units']}</Text>}
+        </View>
+      </View>
+      
+      <View style={styles.infoContainer}>
+        <MaterialCommunityIcons name="information-outline" size={20} color="#757575" />
+        <Text style={styles.infoText}>
+          Estas informações ajudarão a configurar seu condomínio de forma adequada no sistema e facilitarão o acesso dos moradores.
+        </Text>
+      </View>
     </View>
-  </View>
-);
+  );
+  
   // Renderizar formulário da etapa 3 (Dados Administrativos)
   const renderStep3 = () => (
     <View style={styles.stepContainer}>
@@ -1325,7 +1288,7 @@ const renderStep2 = () => (
       
       {/* Overlay de carregamento */}
       <LoadingOverlay visible={loading} />
-    </SafeAreaView>
+      </SafeAreaView>
   );
 };
 

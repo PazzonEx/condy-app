@@ -25,7 +25,6 @@ import { useAuth } from '../../hooks/useAuth';
 
 // Componentes personalizados
 import Input from '../../components/Input';
-import Button from '../../components/Button';
 
 // Serviços
 import FirestoreService from '../../services/firestore.service';

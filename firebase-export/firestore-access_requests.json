@@ -1,0 +1,26 @@
+[
+  {
+    "id": "vgtJdsw9B5fx7h5FrDdU",
+    "createdBy": "pk1WYoyUzIhl9vHhXmzCKLxLvZm2",
+    "status": "authorized",
+    "residentId": "pk1WYoyUzIhl9vHhXmzCKLxLvZm2",
+    "residentName": "Motorista 0",
+    "driverName": "Motorista 0",
+    "vehiclePlate": "ASD-1234",
+    "vehicleModel": "Gol",
+    "condoId": "VUwKDb7a6yNHiZfj2tWqZGqr7du1",
+    "unit": "1",
+    "block": "A",
+    "comment": "Cade ele tá atradado",
+    "type": "driver",
+    "driverExists": false,
+    "createdAt": {
+      "_seconds": 1741938321,
+      "_nanoseconds": 87000000
+    },
+    "updatedAt": {
+      "_seconds": 1741938321,
+      "_nanoseconds": 87000000
+    }
+  }
+]

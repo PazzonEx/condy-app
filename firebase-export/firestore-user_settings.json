@@ -1,0 +1,19 @@
+[
+  {
+    "id": "pk1WYoyUzIhl9vHhXmzCKLxLvZm2",
+    "notificationsEnabled": true,
+    "emailNotificationsEnabled": true,
+    "saveHistory": true,
+    "defaultDriverMode": "listed",
+    "language": "pt-BR",
+    "theme24Hour": true,
+    "createdAt": {
+      "_seconds": 1741938351,
+      "_nanoseconds": 469000000
+    },
+    "updatedAt": {
+      "_seconds": 1741938351,
+      "_nanoseconds": 469000000
+    }
+  }
+]

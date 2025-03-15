@@ -1,0 +1,59 @@
+[
+  {
+    "id": "pk1WYoyUzIhl9vHhXmzCKLxLvZm2",
+    "email": "diegohenriquepalazon@hotmail.com",
+    "name": "Morador 0",
+    "type": "resident",
+    "profileComplete": true,
+    "documents": {
+      "idDocument": [
+        {
+          "path": "users/pk1WYoyUzIhl9vHhXmzCKLxLvZm2/documents/idDocument_1741937577364.jpeg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2Fpk1WYoyUzIhl9vHhXmzCKLxLvZm2%2Fdocuments%2FidDocument_1741937577364.jpeg?alt=media&token=902c821a-6046-4e1a-afef-279ddc77c91d",
+          "type": "image/jpeg",
+          "name": "idDocument_1741937577364.jpeg"
+        }
+      ],
+      "profilePhoto": [
+        {
+          "path": "users/pk1WYoyUzIhl9vHhXmzCKLxLvZm2/documents/profilePhoto_1741937598234.jpeg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2Fpk1WYoyUzIhl9vHhXmzCKLxLvZm2%2Fdocuments%2FprofilePhoto_1741937598234.jpeg?alt=media&token=f8a421f4-dd0c-4b8c-9232-9d94b8757651",
+          "type": "image/jpeg",
+          "name": "profilePhoto_1741937598234.jpeg"
+        }
+      ],
+      "proofOfResidence": [
+        {
+          "path": "users/pk1WYoyUzIhl9vHhXmzCKLxLvZm2/documents/proofOfResidence_1741937584613.jpeg",
+          "url": "https://firebasestorage.googleapis.com/v0/b/aplicativo-condy.firebasestorage.app/o/users%2Fpk1WYoyUzIhl9vHhXmzCKLxLvZm2%2Fdocuments%2FproofOfResidence_1741937584613.jpeg?alt=media&token=838ae8fe-8f32-48ea-acd1-de6be601095c",
+          "type": "image/jpeg",
+          "name": "proofOfResidence_1741937584613.jpeg"
+        }
+      ]
+    },
+    "verificationStatus": "pending",
+    "createdAt": "2025-03-14T07:33:22.594Z",
+    "unit": "1",
+    "condoName": "Conquista Votorantim",
+    "phone": "15997187660",
+    "condoId": "VUwKDb7a6yNHiZfj2tWqZGqr7du1",
+    "cpf": "41209450810",
+    "block": "A",
+    "notificationPreferences": {
+      "accessRequests": true,
+      "statusUpdates": true,
+      "announcements": true
+    },
+    "condoAddress": "R. João Cândido Strombeck, 285 - Altos de Votorantim, Votorantim - SP, 18114-468, Brazil",
+    "statusNotes": "Aprovado pelo administrador",
+    "statusUpdatedAt": {
+      "_seconds": 1741938023,
+      "_nanoseconds": 806000000
+    },
+    "status": "active",
+    "updatedAt": {
+      "_seconds": 1741938023,
+      "_nanoseconds": 806000000
+    }
+  }
+]

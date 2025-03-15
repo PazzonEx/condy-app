@@ -11,7 +11,8 @@ import {
   Platform,
   StatusBar,
   Animated,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { 
   Text, 
@@ -19,11 +20,14 @@ import {
   Button, 
   Surface, 
   useTheme, 
-  Snackbar
+  Snackbar,
+  IconButton
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
-import Logo from'../../assets/images/condy-logo-final.svg'
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Logo from '../../assets/images/condy-logo-final.svg';
+
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
 
@@ -45,6 +49,7 @@ const LoginScreen = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [showError, setShowError] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   
   // Animações
   const logoScale = useRef(new Animated.Value(1)).current;
@@ -53,6 +58,23 @@ const LoginScreen = ({ navigation }) => {
 
   // Refs
   const passwordInputRef = useRef(null);
+  
+  // Verificar se há email salvo
+  useEffect(() => {
+    const checkSavedEmail = async () => {
+      try {
+        const savedEmail = await AsyncStorage.getItem('@auth_email');
+        if (savedEmail) {
+          setEmail(savedEmail);
+          setRememberMe(true);
+        }
+      } catch (error) {
+        console.error('Erro ao recuperar email salvo:', error);
+      }
+    };
+    
+    checkSavedEmail();
+  }, []);
   
   // Efeito para monitorar teclado e animar componentes
   useEffect(() => {
@@ -104,18 +126,25 @@ const LoginScreen = ({ navigation }) => {
   
   // Validar formulário
   const validateForm = () => {
+    // Limpar erros anteriores
+    setErrorMessage('');
+    setShowError(false);
+    
+    // Verificar email
     if (!email.trim()) {
       setErrorMessage('Informe seu email');
       setShowError(true);
       return false;
     }
     
-    if (!isValidEmail(email)) {
+    // Para o email do admin, pule a validação de formato
+    if (email !== 'admin@condy.com' && !isValidEmail(email)) {
       setErrorMessage('Email inválido');
       setShowError(true);
       return false;
     }
     
+    // Verificar senha
     if (!password) {
       setErrorMessage('Informe sua senha');
       setShowError(true);
@@ -125,42 +154,57 @@ const LoginScreen = ({ navigation }) => {
     return true;
   };
   
- // No componente LoginScreen
-const handleLogin = async () => {
-
-
-
-  
-  if (!validateForm()) return;
-  
-  Keyboard.dismiss();
-  setLoading(true);
-  setShowError(false);
-  
-  try {
-    // Verificar se é tentativa de login como admin
-    if (email === 'admin@condy.com') {
-      console.log("Tentativa de login como admin");
+  // Função de login
+  const handleLogin = async () => {
+    console.log("Tentando fazer login...");
+    
+    if (!validateForm) return;
+    
+    Keyboard.dismiss();
+    setLoading(true);
+    setShowError(false);
+    
+    try {
+      console.log("Email:", email, "Password:", "****");
+      
+      // Salvar email se "lembrar-me" estiver ativado
+      if (rememberMe) {
+        await AsyncStorage.setItem('@auth_email', email);
+      } else {
+        await AsyncStorage.removeItem('@auth_email');
+      }
+      
+      await login(email, password);
+      console.log("Login bem-sucedido!");
+      // A navegação é gerenciada pelo hook useAuth
+    } catch (error) {
+      console.error("Erro de login:", error.code, error.message);
+      
+      let errorMsg = 'Falha ao fazer login. Tente novamente.';
+      
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMsg = 'Email ou senha incorretos';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMsg = 'Erro de conexão. Verifique sua internet.';
+      }
+      
+      setErrorMessage(errorMsg);
+      setShowError(true);
+      
+      // Mostrar alerta para erros críticos
+      if (error.code === 'auth/network-request-failed') {
+        Alert.alert(
+          "Erro de Conexão",
+          "Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.",
+          [{ text: "OK" }]
+        );
+      }
+    } finally {
+      setLoading(false);
     }
-    
-    await login(email, password);
-    // A navegação é gerenciada pelo hook useAuth
-  } catch (error) {
-    let errorMsg = 'Falha ao fazer login. Tente novamente.';
-    
-    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-      errorMsg = 'Email ou senha incorretos';
-    } else if (error.code === 'auth/too-many-requests') {
-      errorMsg = 'Muitas tentativas. Tente novamente mais tarde.';
-    }
-    
-    console.error("Erro de login:", error.code, error.message);
-    setErrorMessage(errorMsg);
-    setShowError(true);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
   
   // Recuperar senha
   const handleForgotPassword = () => {
@@ -177,6 +221,7 @@ const handleLogin = async () => {
       behavior={Platform.OS === 'ios' ? 'padding' : null}
       style={styles.container}
     >
+      <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
       <ScrollView 
         contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
@@ -221,7 +266,7 @@ const handleLogin = async () => {
                 mode="outlined"
                 outlineColor="#E0E0E0"
                 activeOutlineColor={theme.colors.primary}
-                error={showError && (!email.trim() || !isValidEmail(email))}
+                error={showError && (!email.trim() || (!isValidEmail(email) && email !== 'admin@condy.com'))}
               />
             </View>
             
@@ -251,15 +296,30 @@ const handleLogin = async () => {
               />
             </View>
             
-            {/* Link Esqueci a Senha */}
-            <TouchableOpacity 
-              onPress={handleForgotPassword}
-              style={styles.forgotPasswordLink}
-            >
-              <Text style={[styles.forgotPasswordText, { color: theme.colors.primary }]}>
-                Esqueci minha senha
-              </Text>
-            </TouchableOpacity>
+            {/* Opção Lembrar-me */}
+            <View style={styles.rememberContainer}>
+              <TouchableOpacity 
+                style={styles.rememberMe}
+                onPress={() => setRememberMe(!rememberMe)}
+              >
+                <MaterialCommunityIcons 
+                  name={rememberMe ? "checkbox-marked" : "checkbox-blank-outline"} 
+                  size={20} 
+                  color={rememberMe ? theme.colors.primary : "#757575"} 
+                />
+                <Text style={styles.rememberText}>Lembrar-me</Text>
+              </TouchableOpacity>
+              
+              {/* Link Esqueci a Senha */}
+              <TouchableOpacity 
+                onPress={handleForgotPassword}
+                style={styles.forgotPasswordLink}
+              >
+                <Text style={[styles.forgotPasswordText, { color: theme.colors.primary }]}>
+                  Esqueci minha senha
+                </Text>
+              </TouchableOpacity>
+            </View>
             
             {/* Botão de Login */}
             <Button
@@ -313,6 +373,10 @@ const handleLogin = async () => {
         onDismiss={() => setShowError(false)}
         duration={3000}
         style={styles.errorSnackbar}
+        action={{
+          label: 'OK',
+          onPress: () => setShowError(false),
+        }}
       >
         {errorMessage}
       </Snackbar>
@@ -324,12 +388,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-    
   },
   scrollContainer: {
     flexGrow: 1,
     paddingBottom: 24,
-    
   },
   logoContainer: {
     alignItems: 'center',
@@ -379,9 +441,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
+  rememberContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  rememberMe: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rememberText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#757575',
+  },
   forgotPasswordLink: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
   },
   forgotPasswordText: {
     fontSize: 14,
