@@ -34,3 +34,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 firecondoadmin.json
+export-firebase-data.js
+add-test-condos.js
+security/
