@@ -31,9 +31,10 @@ yarn-error.*
 # local env files
 .env*.local
 
-# typescript
-*.tsbuildinfo
 firecondoadmin.json
 export-firebase-data.js
 add-test-condos.js
 security/
+
+# typescript
+*.tsbuildinfo
