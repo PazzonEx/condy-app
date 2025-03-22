@@ -27,6 +27,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Logo from '../../assets/images/condy-logo-final.svg';
+import NotificationService from '../../services/notification.service';
 
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
@@ -123,6 +124,19 @@ const LoginScreen = ({ navigation }) => {
       keyboardDidHideListener.remove();
     };
   }, []);
+  const handlenotificaStripe = async () => {
+
+    navigation.navigate('Stripe');
+    
+
+
+   /* try {
+      const token = await NotificationService.registerForPushNotificationsAsync();
+      console.log(token);
+    } catch (error) {
+      console.error("Erro ao registrar para notificações:", error);
+    }*/
+  };
   
   // Validar formulário
   const validateForm = () => {
@@ -363,10 +377,16 @@ const LoginScreen = ({ navigation }) => {
                 Cadastre-se
               </Text>
             </TouchableOpacity>
+            
           </View>
         </Animated.View>
       </ScrollView>
-      
+      <TouchableOpacity 
+        style={styles.StripeButton}
+        onPress={()=>{handlenotificaStripe()}}
+      >
+        <Text style={styles.registerText}>Stripe</Text>
+      </TouchableOpacity>
       {/* Snackbar para Erros */}
       <Snackbar
         visible={showError}
@@ -402,6 +422,15 @@ const styles = StyleSheet.create({
     width: 200,
     height: 100,
     marginBottom: 1,
+  },
+  StripeButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 4,
+    elevation: 3,
+    backgroundColor: 'black',
   },
   appName: {
     fontSize: 28,

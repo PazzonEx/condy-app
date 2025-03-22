@@ -27,6 +27,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { serverTimestamp } from 'firebase/firestore';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
@@ -481,7 +482,7 @@ const ResidentRegisterScreen = () => {
     }
   };
   
-  // Enviar formulário
+
   const submitForm = async () => {
     try {
       setLoading(true);
@@ -490,28 +491,101 @@ const ResidentRegisterScreen = () => {
         throw new Error('Usuário não autenticado');
       }
       
-      // Processar uploads de documentos
-      console.log('Iniciando upload de documentos...');
-      const uploadedDocuments = await processDocumentUploads();
-      console.log('Uploads concluídos:', uploadedDocuments);
+      // Garantir que o CPF esteja formatado corretamente
+      const cleanCPF = residentData.cpf.replace(/\D/g, '');
+      
+      // Preparar documentos para upload
+      const documentUploads = [];
+      
+      // Fazer upload de documentos se existirem
+      if (residentData.documents.idDocument && residentData.documents.idDocument.length > 0) {
+        for (const doc of residentData.documents.idDocument) {
+          if (doc.uri && !doc.uploaded) {
+            // Fazer upload do documento
+            const path = `documents/${currentUser.uid}/idDocument/${Date.now()}_${doc.name}`;
+            documentUploads.push(StorageService.uploadFile(path, doc.uri));
+          }
+        }
+      }
+      
+      if (residentData.documents.proofOfResidence && residentData.documents.proofOfResidence.length > 0) {
+        for (const doc of residentData.documents.proofOfResidence) {
+          if (doc.uri && !doc.uploaded) {
+            // Fazer upload do documento
+            const path = `documents/${currentUser.uid}/proofOfResidence/${Date.now()}_${doc.name}`;
+            documentUploads.push(StorageService.uploadFile(path, doc.uri));
+          }
+        }
+      }
+      
+      // Fazer upload opcional da foto de perfil
+      if (residentData.documents.profilePhoto && residentData.documents.profilePhoto.length > 0) {
+        const profilePhoto = residentData.documents.profilePhoto[0];
+        if (profilePhoto.uri && !profilePhoto.uploaded) {
+          const path = `profile_photos/${currentUser.uid}/${Date.now()}_${profilePhoto.name}`;
+          documentUploads.push(StorageService.uploadFile(path, profilePhoto.uri));
+        }
+      }
+      
+      // Aguardar todos os uploads
+      const uploadResults = await Promise.all(documentUploads);
+      
+      // Atualizar URLs dos documentos
+      const updatedDocuments = {
+        idDocument: residentData.documents.idDocument.map((doc, index) => {
+          if (doc.uri && !doc.uploaded) {
+            return {
+              ...doc,
+              url: uploadResults.shift().url,
+              path: uploadResults.shift().path,
+              uploaded: true
+            };
+          }
+          return doc;
+        }),
+        proofOfResidence: residentData.documents.proofOfResidence.map((doc, index) => {
+          if (doc.uri && !doc.uploaded) {
+            return {
+              ...doc,
+              url: uploadResults.shift().url,
+              path: uploadResults.shift().path,
+              uploaded: true
+            };
+          }
+          return doc;
+        }),
+        profilePhoto: residentData.documents.profilePhoto.map((doc, index) => {
+          if (doc.uri && !doc.uploaded) {
+            return {
+              ...doc,
+              url: uploadResults.shift().url,
+              path: uploadResults.shift().path,
+              uploaded: true
+            };
+          }
+          return doc;
+        })
+      };
       
       // Preparar dados para envio
       const residentProfileData = {
         // Dados pessoais
         name: residentData.name,
-        cpf: residentData.cpf.replace(/\D/g, ''),
+        cpf: cleanCPF,
         phone: residentData.phone.replace(/\D/g, ''),
         email: residentData.email,
         
         // Dados de residência
         condoId: residentData.condoId,
         condoName: residentData.condoName,
-        condoAddress: residentData.condoAddress,
         block: residentData.block,
         unit: residentData.unit,
         
-        // Documentos
-        documents: uploadedDocuments,
+        // Documentos com URLs atualizadas
+        documents: updatedDocuments,
+        
+        // Foto de perfil URL (se existir)
+        photoURL: updatedDocuments.profilePhoto?.[0]?.url,
         
         // Preferências
         notificationPreferences: residentData.notificationPreferences,
@@ -520,28 +594,27 @@ const ResidentRegisterScreen = () => {
         status: 'pending_verification',
         verificationStatus: 'pending',
         profileComplete: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: serverTimestamp()
       };
       
       // Atualizar documento do morador no Firestore
       await FirestoreService.updateDocument('residents', currentUser.uid, residentProfileData);
       
-      // Atualizar perfil geral
-      await updateProfile({
-        displayName: residentData.name,
-        profileComplete: true,
-        status: 'pending_verification'
-      });
-      
-      // Atualizar documento de usuário para consistência
+      // Atualizar perfil geral (users collection)
       await FirestoreService.updateDocument('users', currentUser.uid, {
         displayName: residentData.name,
         profileComplete: true,
         status: 'pending_verification',
-        updatedAt: new Date().toISOString()
+        updatedAt: serverTimestamp(),
+        photoURL: updatedDocuments.profilePhoto?.[0]?.url
       });
       
+      // Atualizar o contexto de autenticação
+      await updateProfile({
+        displayName: residentData.name,
+        profileComplete: true,
+        photoURL: updatedDocuments.profilePhoto?.[0]?.url
+      });
       // Atualizar o estado do contexto de autenticação
       const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
       setUserProfile({

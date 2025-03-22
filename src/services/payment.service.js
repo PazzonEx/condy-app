@@ -1,6 +1,69 @@
 // src/services/payment.service.js
 import { auth, firestore } from '../config/firebase';
 import { doc, collection, addDoc, updateDoc, getDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+// services/PaymentService.js
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApp } from 'firebase/app';
+import { openBrowserAsync } from 'expo-web-browser';
+
+// Configuração do Functions para a região sul-americana
+const functions = getFunctions(getApp(), 'southamerica-east1');
+
+// Função para criar uma sessão de checkout do Stripe
+export const createCheckoutSession = async (options) => {
+  try {
+    // Preparar dados do checkout
+    const data = {
+      priceId: options.priceId,
+      mode: options.mode || 'subscription',
+      successUrl: options.successUrl || 'https://seu-app.com/sucesso',
+      cancelUrl: options.cancelUrl || 'https://seu-app.com/cancelado',
+    };
+
+    // Chamar a Cloud Function
+    const createCheckout = httpsCallable(functions, 'createCheckoutSession');
+    const result = await createCheckout(data);
+
+    // Se tivermos um ID de sessão, abrir o browser para checkout
+    if (result.data && result.data.sessionId) {
+      // URL do checkout do Stripe
+      const checkoutUrl = `https://checkout.stripe.com/pay/${result.data.sessionId}`;
+      
+      // Abrir o checkout no navegador
+      await openBrowserAsync(checkoutUrl);
+      
+      return { success: true, sessionId: result.data.sessionId };
+    } else {
+      throw new Error('Sessão de checkout não criada');
+    }
+  } catch (error) {
+    console.error('Erro ao criar sessão de checkout:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Erro desconhecido durante o checkout'
+    };
+  }
+};
+
+// Função para verificar o status da assinatura do usuário
+export const checkSubscriptionStatus = async (userId) => {
+  try {
+    // Essa função assume que você já tem uma lógica para consultar 
+    // o Firestore e verificar o status da assinatura
+    // Pode ser implementada usando Firebase SDK diretamente
+    
+    // Exemplo com Firestore:
+    // const userDoc = await getDoc(doc(db, 'users', userId));
+    const userDoc = await getDoc(doc(firestore, 'users', user.uid));
+     return userDoc.exists() ? userDoc.data().subscriptionStatus : null;
+    
+    // Implementação real aqui
+  } catch (error) {
+    console.error('Erro ao verificar status da assinatura:', error);
+    return null;
+  }
+};
+
 
 const PaymentService = {
   /**

@@ -42,20 +42,69 @@ const NotificationService = {
       }
       
       if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
+        console.log('Você não possue permissão para notificações');
         return null;
       }
+
+       token = (await Notifications.getExpoPushTokenAsync({
+    projectId: "48a62ec1-11f9-45ba-a19f-7181e2c2edb6" // Substitua pelo seu project ID do console Expo
+  })).data;
       
-      token = (await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
-      })).data;
       
     } else {
-      console.log('Must use physical device for Push Notifications');
+      console.log('É necessário usar um dispositivo físico para notificações push');
     }
+      
+
+     
+ 
+      
+
 
     return token;
   },
+
+
+  // Nova função para enviar notificações remotas
+  async sendRemoteNotification(token, title, body, data = {}) {
+    if (!token) {
+      throw new Error('Token de notificação não fornecido');
+    }
+    
+    const message = {
+      to: token,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: data || {},
+      priority: 'high',
+    };
+    
+    try {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+      
+      const responseData = await response.json();
+      
+      if (responseData.data && responseData.data.status === 'error') {
+        throw new Error(responseData.data.message || 'Erro ao enviar notificação');
+      }
+      
+      return responseData;
+    } catch (error) {
+      console.error('Erro ao enviar notificação:', error);
+      throw error;
+    }
+  },
+
+
   // Em notification.service.js - Adicionar métodos para enviar notificações aos diferentes tipos de usuários
 // Enviar notificação para morador
 async notifyResident(residentId, title, body, data = {}) {

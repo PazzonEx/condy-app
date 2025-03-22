@@ -3,9 +3,16 @@ import {
   View, 
   StyleSheet, 
   ScrollView, 
-  Alert, 
-  TouchableOpacity 
+  Alert,   
+  Modal,
+  TouchableOpacity,
+  TextInput,  
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView
 } from 'react-native';
+import AddResidentDialog from './AddResidentDialog';
+
 import { 
   Text, 
   Card, 
@@ -22,9 +29,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
+import { auth } from '../../config/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 // Componentes personalizados
-import Input from '../../components/Input';
 
 // Serviços
 import FirestoreService from '../../services/firestore.service';
@@ -32,19 +40,19 @@ import AuthService from '../../services/auth.service';
 
 const CondoResidentsScreen = ({ navigation }) => {
   const theme = useTheme();
-  const { userProfile } = useAuth();
+  const { userProfile, logout } = useAuth();
 
   // Estados para gerenciamento de moradores
   const [residents, setResidents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
-  const [newResident, setNewResident] = useState({
-    name: '',
-    email: '',
-    unit: '',
-    block: '',
-    phone: ''
-  });
+  const [newResident, setNewResident] = useState({})
+  const [newName, setNewName]= useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newUnit, setNewUnit] = useState("");
+  const [newBlock, setNewBlock] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  
   const [selectedUnit, setSelectedUnit] = useState('');
 
   // Carregar moradores do condomínio
@@ -71,7 +79,16 @@ const CondoResidentsScreen = ({ navigation }) => {
 
   // Criar conta para morador
   const createResidentAccount = async () => {
+
+    setNewResident({
+      name: newName,
+      email: newEmail,
+      unit: newUnit,
+      block: newBlock,
+      phone: newPhone
+    });
     // Validações
+
     const { name, email, unit, block, phone } = newResident;
     
     if (!name.trim()) {
@@ -97,47 +114,49 @@ const CondoResidentsScreen = ({ navigation }) => {
       
       // Criar usuário no Firebase Auth
       const user = await AuthService.register(email, tempPassword, name);
-      
-      // Criar documento de morador
-      await FirestoreService.createDocumentWithId('residents', user.uid, {
-        name,
-        email,
-        unit,
-        block,
-        phone,
-        condoId: userProfile.id,
-        status: 'active',
-        type: 'resident'
-      });
-      
-      // Criar documento de usuário
-      await FirestoreService.createDocumentWithId('users', user.uid, {
-        email,
-        displayName: name,
-        type: 'resident',
-        status: 'active'
-      });
-      
-      // Enviar email de redefinição de senha
-      await AuthService.resetPassword(email);
+      try {
+        console.log('Enviando email de redefinição de senha para:', email);
+        console.log('auth:', auth);
+        await sendPasswordResetEmail(auth, email);
+        
+      } catch (error) {
+        console.error('Erro ao enviar email de redefinição de senha:', error);
+        throw error;
+      }
+     
+    
       
       Alert.alert(
         'Conta Criada', 
-        `Conta criada para ${name}. Um email de redefinição de senha foi enviado.`
+        `Conta criada para ${name}.Senha provisoria ${tempPassword}. Um email de redefinição de senha foi enviado.`
       );
       
-      // Fechar diálogo e recarregar lista
-      setDialogVisible(false);
-      loadResidents();
-      
-      // Limpar formulário
+     // Limpar formulário
       setNewResident({
-        name: '',
+        name: '', 
         email: '',
         unit: '',
         block: '',
         phone: ''
       });
+       // Função para fazer logout
+  const handleLogout = () => {
+    Alert.alert(
+      'Continuação do cadastro',
+      'Continue o cadastro do morador ou deixar ele redifinir a senha?',
+      [
+        {
+          text: 'Continuar cadastro',
+          style: 'cancel',
+        },
+        {
+          text: 'Sair',
+          onPress: logout,
+        },
+      ]
+    );
+  };
+  handleLogout()
     } catch (error) {
       console.error('Erro ao criar conta de morador:', error);
       Alert.alert('Erro', error.message || 'Não foi possível criar a conta');
@@ -178,7 +197,7 @@ const CondoResidentsScreen = ({ navigation }) => {
       ]
     );
   };
-
+  
   // Renderizar cartão de morador
   const renderResidentCard = (resident) => (
     <Card key={resident.id} style={styles.residentCard}>
@@ -276,67 +295,24 @@ const CondoResidentsScreen = ({ navigation }) => {
       />
 
       {/* Diálogo de Adicionar Morador */}
-      <Portal>
-        <Dialog
-          visible={dialogVisible}
-          onDismiss={() => setDialogVisible(false)}
-        >
-          <Dialog.Title>Adicionar Morador</Dialog.Title>
-          <Dialog.Content>
-            <Input
-              label="Nome Completo"
-              value={newResident.name}
-              onChangeText={(text) => setNewResident(prev => ({...prev, name: text}))}
-              placeholder="Nome do morador"
-              autoCapitalize="words"
-            />
-            
-            <Input
-              label="Email"
-              value={newResident.email}
-              onChangeText={(text) => setNewResident(prev => ({...prev, email: text}))}
-              placeholder="Email do morador"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            
-            <Input
-              label="Unidade"
-              value={newResident.unit}
-              onChangeText={(text) => setNewResident(prev => ({...prev, unit: text}))}
-              placeholder="Número da unidade"
-              keyboardType="numeric"
-            />
-            
-            <Input
-              label="Bloco (opcional)"
-              value={newResident.block}
-              onChangeText={(text) => setNewResident(prev => ({...prev, block: text}))}
-              placeholder="Bloco do condomínio"
-              autoCapitalize="characters"
-            />
-            
-            <Input
-              label="Telefone (opcional)"
-              value={newResident.phone}
-              onChangeText={(text) => setNewResident(prev => ({...prev, phone: text}))}
-              placeholder="Telefone do morador"
-              keyboardType="phone-pad"
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <PaperButton onPress={() => setDialogVisible(false)}>
-              Cancelar
-            </PaperButton>
-            <PaperButton 
-              onPress={createResidentAccount}
-              disabled={loading}
-            >
-              Adicionar
-            </PaperButton>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      <AddResidentDialog
+        dialogVisible={dialogVisible}
+        setDialogVisible={setDialogVisible}
+        newName={newName}
+        setNewName={setNewName}
+        newEmail={newEmail}
+        setNewEmail={setNewEmail}
+        newUnit={newUnit}
+        setNewUnit={setNewUnit}
+        newBlock={newBlock}
+        setNewBlock={setNewBlock}
+        newPhone={newPhone}
+        setNewPhone={setNewPhone}
+        createResidentAccount={createResidentAccount}
+        loading={loading}
+      />
+      
+    
     </View>
   );
 };
@@ -347,6 +323,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
+    paddingTop:35,
     padding: 16,
     backgroundColor: 'white',
     borderBottomWidth: 1,

@@ -23,17 +23,9 @@ const HomeStack = () => {
   
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      }}
+      
     >
-      <Stack.Screen name="DriverHome" component={DriverHomeScreen} options={{ title: 'Solicitações' }} />
+      <Stack.Screen name="DriverHome" component={DriverHomeScreen} options={{ headerShown: false }} />
       <Stack.Screen 
         name="DriverSubscription" 
         component={SubscriptionPlansScreen} 
@@ -51,18 +43,10 @@ const SearchStack = () => {
   
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      }}
+     
     >
-      <Stack.Screen name="DriverCondoSearch" component={DriverCondoSearchScreen} options={{ title: 'Buscar Condomínio' }} />
-      <Stack.Screen name="DriverQRCode" component={DriverQRCodeScreen} options={{ title: 'Gerar QR Code' }} />
+      <Stack.Screen name="DriverCondoSearch" component={DriverCondoSearchScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="DriverQRCode" component={DriverQRCodeScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
@@ -73,18 +57,10 @@ const ProfileStack = () => {
   
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-      }}
+     
     >
-      <Stack.Screen name="DriverProfile" component={DriverProfileScreen} options={{ title: 'Meu Perfil' }} />
-      <Stack.Screen name="DriverSettings" component={DriverSettingsScreen} options={{ title: 'Configurações' }} />
+      <Stack.Screen name="DriverProfile" component={DriverProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="DriverSettings" component={DriverSettingsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };

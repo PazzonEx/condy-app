@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Image, TouchableOpacity, Alert } from 'react-native';
-import { Text, FAB, Chip, ActivityIndicator } from 'react-native-paper';
+import { Text, FAB, Chip, ActivityIndicator, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-
+import LottieView from 'lottie-react-native';
 // Hooks e serviços
 import { useAuth } from '../../hooks/useAuth';
 import AccessService from '../../services/access.service';
@@ -211,7 +211,13 @@ const DriverHomeScreen = ({ navigation }) => {
   // Renderizar estado vazio (sem solicitações)
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <MaterialCommunityIcons name="clipboard-text-outline" size={64} color={getColor('grey.400')} />
+
+      <LottieView
+                source={require('../../assets/animations/empty-state.json')}
+                autoPlay
+                loop
+                style={styles.emptyAnimation}
+              />
       <Text style={styles.emptyTitle}>Nenhuma solicitação encontrada</Text>
       <Text style={styles.emptyDescription}>
         {filter === 'active'
@@ -226,6 +232,7 @@ const DriverHomeScreen = ({ navigation }) => {
       >
         <Text style={styles.emptyButtonText}>Buscar Condomínio</Text>
       </TouchableOpacity>
+      
     </View>
   );
   
@@ -335,7 +342,7 @@ const DriverHomeScreen = ({ navigation }) => {
       
       {/* Solicitações pendentes de aprovação de morador */}
       <PendingResidentApproval />
-      
+
       {/* Lista de solicitações */}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -359,8 +366,19 @@ const DriverHomeScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 <Text style={styles.dateText}>
-                  {item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR') : ''}
-                </Text>
+  {item.createdAt 
+    ? (() => {
+        // Verifica se é um timestamp do Firestore
+        if (item.createdAt && item.createdAt.toDate) {
+          return item.createdAt.toDate().toLocaleDateString('pt-BR');
+        }
+        
+        // Verifica se é uma data ISO ou timestamp em milissegundos
+        const date = new Date(item.createdAt);
+        return isNaN(date.getTime()) ? '' : date.toLocaleDateString('pt-BR');
+      })()
+    : ''}
+</Text>
               </View>
 
               <View style={styles.requestContent}>
@@ -409,7 +427,7 @@ const DriverHomeScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
         />
       )}
-      
+     
       {/* Botão flutuante para solicitar acesso */}
       <FAB
         style={styles.fab}
@@ -424,14 +442,14 @@ const DriverHomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#ffffff',
   },
   profileHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingVertical: 35,
     backgroundColor: '#FFFFFF',
   },
   profileInfo: {
@@ -593,6 +611,11 @@ const styles = StyleSheet.create({
     padding: 8,
     borderTopWidth: 1,
     borderTopColor: '#EEEEEE',
+  },
+   emptyAnimation: {
+    width: 150,
+    height: 150,
+    marginBottom: 16,
   },
   actionButton: {
     flexDirection: 'row',

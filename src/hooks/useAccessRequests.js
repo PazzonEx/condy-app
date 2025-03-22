@@ -6,7 +6,7 @@ import AccessService from '../services/access.service';
 import NotificationService from '../services/notification.service';
 
 export const useAccessRequests = () => {
-  const { userType, userId } = useAuth();
+  const { userType, userId,currentUser, userProfile } = useAuth();
   
   const [requests, setRequests] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
@@ -23,54 +23,137 @@ export const useAccessRequests = () => {
     today: 0
   });
   
-  // Carregar solicitações baseadas no tipo de usuário
-  const loadRequests = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      let statusFilter = null;
-      
-      // Determinar filtro de status baseado na seleção
-      if (filter === 'active') {
-        statusFilter = ['pending', 'authorized', 'arrived'];
-        if (userType === 'resident') {
-          statusFilter.push('pending_resident');
-        }
-      } else if (filter === 'completed') {
-        statusFilter = ['completed', 'entered', 'denied', 'canceled'];
-      }
-      
-      // Buscar solicitações do servidor
-      const accessRequests = await AccessService.getAccessRequests({
-        statusFilter,
-        userType,
-        userId
-      });
-      
-      // Buscar estatísticas se for condomínio
-      if (userType === 'condo') {
-        const statsData = await AccessService.getQuickStats();
-        setStats({
-          pending: statsData.byStatus.pending || 0,
-          authorized: statsData.byStatus.authorized || 0,
-          completed: statsData.byStatus.completed || 0,
-          today: statsData.todayCount || 0
-        });
-      }
-      
-      setRequests(accessRequests);
-      
-      // Aplicar filtro de pesquisa se existir
-      filterRequestsBySearch(accessRequests, searchQuery);
-    } catch (error) {
-      console.error('Erro ao carregar solicitações:', error);
-      setError('Não foi possível carregar as solicitações');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  // Em src/hooks/useAccessRequests.js - Função loadRequests melhorada
+
+const loadRequests = useCallback(async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    
+    if (!currentUser) {
+      throw new Error('Usuário não autenticado');
     }
-  }, [filter, userType, userId, searchQuery]);
+    
+    // Verificar tipo de usuário para determinar filtros adequados
+    if (!userProfile?.type) {
+      console.warn('Tipo de usuário não disponível, tentando buscar...');
+      
+      // Tentar buscar o perfil novamente
+      const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
+      if (!userDoc?.type) {
+        throw new Error('Tipo de usuário não disponível');
+      }
+      
+      // Atualizar tipo
+      userType = userDoc.type;
+    } else {
+      userType = userProfile.type;
+    }
+    
+    let statusFilter = null;
+    
+    // Determinar filtro de status baseado na seleção e tipo de usuário
+    if (filter === 'active') {
+      switch (userType) {
+        case 'resident':
+          statusFilter = ['pending', 'authorized', 'arrived', 'pending_resident'];
+          break;
+        case 'driver':
+          statusFilter = ['pending', 'authorized', 'arrived'];
+          break;
+        case 'condo':
+          statusFilter = ['pending', 'authorized', 'arrived'];
+          break;
+        default:
+          statusFilter = ['pending', 'authorized', 'arrived'];
+      }
+    } else if (filter === 'completed') {
+      statusFilter = ['completed', 'entered', 'denied', 'canceled'];
+    }
+    
+    // Condições específicas por tipo de usuário
+    let conditions = [];
+    
+    switch (userType) {
+      case 'resident':
+        conditions.push({ field: 'residentId', operator: '==', value: currentUser.uid });
+        break;
+      case 'driver':
+        conditions.push({ field: 'driverId', operator: '==', value: currentUser.uid });
+        break;
+      case 'condo':
+        conditions.push({ field: 'condoId', operator: '==', value: currentUser.uid });
+        break;
+    }
+    
+    // Adicionar filtro de status se definido
+    if (statusFilter && statusFilter.length > 0) {
+      conditions.push({ field: 'status', operator: 'in', value: statusFilter });
+    }
+    
+    console.log(`Consultando solicitações para ${userType} com filtros:`, conditions);
+    
+    // Buscar solicitações do servidor com todos os filtros
+    const accessRequests = await FirestoreService.queryDocuments(
+      'access_requests',
+      conditions,
+      { field: 'createdAt', direction: 'desc' }
+    );
+    
+    console.log(`Encontradas ${accessRequests.length} solicitações`);
+    
+    // Adicionar informações adicionais se necessário
+    const enhancedRequests = await Promise.all(
+      accessRequests.map(async (request) => {
+        try {
+          // Para moradores: adicionar info do condomínio se não existir
+          if (userType === 'resident' && request.condoId && !request.condoName) {
+            const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
+            if (condoDoc) {
+              return {
+                ...request,
+                condoName: condoDoc.name
+              };
+            }
+          }
+          
+          // Para motoristas: adicionar info do morador/condomínio se não existir
+          if (userType === 'driver' && request.residentId && !request.residentName) {
+            const residentDoc = await FirestoreService.getDocument('residents', request.residentId);
+            if (residentDoc) {
+              return {
+                ...request,
+                residentName: residentDoc.name,
+                unit: residentDoc.unit || request.unit,
+                block: residentDoc.block || request.block
+              };
+            }
+          }
+        } catch (error) {
+          console.warn('Erro ao buscar informações adicionais:', error);
+        }
+        
+        return request;
+      })
+    );
+    
+    setRequests(enhancedRequests);
+    
+    // Aplicar filtro de pesquisa se existir
+    if (searchQuery.trim()) {
+      filterRequestsBySearch(enhancedRequests, searchQuery);
+    } else {
+      setFilteredRequests(enhancedRequests);
+    }
+    
+  } catch (error) {
+    console.error('Erro ao carregar solicitações:', error);
+    setError('Não foi possível carregar as solicitações');
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+}, [filter, userType, userId, searchQuery, currentUser, userProfile]);
   
   // Filtrar solicitações com base na pesquisa
   const filterRequestsBySearch = useCallback((requestsArray, query) => {

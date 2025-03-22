@@ -2,15 +2,20 @@ import FirestoreService from './firestore.service';
 import NotificationService from './notification.service';
 import { auth } from '../config/firebase';
 import { serverTimestamp } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 
 const AccessService = {
-// No AccessService.js
+// Em src/services/access.service.js
+
 async approveResidentRequest(requestId) {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('Usuário não autenticado');
+    
+    // Verificar se é morador
+    const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
+    if (userDoc?.type !== 'resident') {
+      throw new Error('Apenas moradores podem aprovar esta solicitação');
+    }
     
     // Obter detalhes da solicitação
     const request = await FirestoreService.getDocument('access_requests', requestId);
@@ -37,34 +42,25 @@ async approveResidentRequest(requestId) {
     
     await FirestoreService.updateDocument('access_requests', requestId, updateData);
     
-    // Enviar notificações para portaria e motorista
-    try {
-      // Notificar portaria
-      if (request.condoId) {
-        const condoDoc = await FirestoreService.getDocument('condos', request.condoId);
-        if (condoDoc && condoDoc.notificationToken) {
-          await NotificationService.sendLocalNotification(
-            'Nova Solicitação Aprovada',
-            `Acesso para ${request.driverName} aprovado pelo morador da unidade ${request.unit}`,
-            { requestId, type: 'new_approved_request' }
-          );
-        }
-      }
-      
-      // Notificar motorista
-      if (request.driverId) {
-        const driverDoc = await FirestoreService.getDocument('drivers', request.driverId);
-        if (driverDoc && driverDoc.notificationToken) {
-          await NotificationService.sendLocalNotification(
-            'Solicitação Aprovada',
-            `Sua solicitação de acesso foi aprovada pelo morador`,
-            { requestId, type: 'resident_approved' }
-          );
-        }
-      }
-    } catch (notifError) {
-      console.error('Erro ao enviar notificações:', notifError);
-      // Continuar mesmo com erro nas notificações
+    // Notificações
+    // 1. Notificar portaria
+    if (request.condoId) {
+      await NotificationService.sendNotificationToUser(
+        request.condoId,
+        'Solicitação Aprovada pelo Morador',
+        `${request.residentName} aprovou o acesso para ${request.driverName}`,
+        { requestId, type: 'resident_approved' }
+      );
+    }
+    
+    // 2. Notificar motorista
+    if (request.driverId) {
+      await NotificationService.sendNotificationToUser(
+        request.driverId,
+        'Solicitação Aprovada',
+        `Sua solicitação foi aprovada pelo morador`,
+        { requestId, type: 'resident_approved' }
+      );
     }
     
     return true;
@@ -153,26 +149,34 @@ async getAccessRequestDetails(requestId) {
  * @param {number} limit - Número máximo de registros a retornar (opcional)
  * @returns {Promise<Array>} - Lista de solicitações de acesso
  */
+// Em src/services/access.service.js
+
+/**
+ * Obter histórico de acessos de um residente
+ * @param {string} residentId - ID do residente
+ * @param {number} limit - Número máximo de registros a retornar (opcional)
+ * @returns {Promise<Array>} - Lista de solicitações de acesso
+ */
 async getResidentAccessHistory(residentId, limit = 50) {
   try {
     if (!residentId) {
-      throw new Error('Resident ID not provided');
+      throw new Error('ID do residente não fornecido');
     }
     
-    console.log(`Fetching history for resident: ${residentId}`);
+    console.log(`Buscando histórico para residente: ${residentId}`);
     
-    // Query conditions
+    // Condições da consulta
     const conditions = [
       { field: 'residentId', operator: '==', value: residentId }
     ];
     
-    // Order by creation date (newest first)
+    // Ordenar por data de criação (mais recentes primeiro)
     const orderBy = {
       field: 'createdAt',
       direction: 'desc'
     };
     
-    // Fetch requests
+    // Buscar solicitações
     const requests = await FirestoreService.queryDocuments(
       'access_requests',
       conditions,
@@ -180,9 +184,9 @@ async getResidentAccessHistory(residentId, limit = 50) {
       limit
     );
     
-    console.log(`Retrieved ${requests.length} history records`);
+    console.log(`Recuperados ${requests.length} registros de histórico`);
     
-    // Mark requests as read (we'll do this one by one)
+    // Marcar solicitações como lidas (uma a uma)
     for (const request of requests) {
       if (request.read !== true) {
         await FirestoreService.updateDocument('access_requests', request.id, {
@@ -193,11 +197,10 @@ async getResidentAccessHistory(residentId, limit = 50) {
     
     return requests;
   } catch (error) {
-    console.error('Error getting resident access history:', error);
+    console.error('Erro ao obter histórico de acesso do residente:', error);
     throw error;
   }
 },
-
 
 // Resident denial function
 async denyResidentRequest(requestId) {
@@ -363,8 +366,8 @@ async getCondoStaffTokens(condoId) {
               // Send push notification to driver
               await this.sendDriverNotification(
                 driverDoc.notificationToken,
-                'New Access Request',
-                `${accessRequestData.residentName} has requested your access to their building`,
+                'nova requisicao de acesso',
+                `${accessRequestData.residentName} solicitou sua entrada no condomínio`,
                 {
                   requestId: createdRequest.id,
                   type: 'new_request'
@@ -538,102 +541,84 @@ async sendDriverNotification(token, title, body, data) {
    * Criar solicitação de acesso para morador
    * @private
    */
-  // In AccessService.js - _createResidentAccessRequest method
+// Em src/services/access.service.js - Modificar createAccessRequest para vincular corretamente
+
 async _createResidentAccessRequest(requestData, baseData) {
   const currentUser = auth.currentUser;
   
-  // Fetch resident information first to ensure we have proper data
+  // Buscar informações completas do morador
   const residentDoc = await FirestoreService.getDocument('residents', currentUser.uid);
   
-  if (!residentDoc) {
-    throw new Error('Resident profile not found');
-  }
-  
-  // Fetch condominium information
-  let condoData = null;
-  if (residentDoc.condoId) {
-    condoData = await FirestoreService.getDocument('condos', residentDoc.condoId);
-  }
-  
-  // Check if driver exists
+  // Verificar existência do motorista por placa
   let driverId = null;
-  let driverData = null;
   let driverExists = false;
   
-  if (requestData.driverId) {
-    // If driver ID is provided, use it directly
-    driverId = requestData.driverId;
-    driverData = await FirestoreService.getDocument('drivers', driverId);
-    driverExists = !!driverData;
-  } else if (requestData.vehiclePlate) {
-    // Try to find a driver by vehicle plate
+  if (requestData.vehiclePlate) {
+    // Buscar motorista por placa (normalizada)
+    const normalizedPlate = requestData.vehiclePlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
     const drivers = await FirestoreService.queryDocuments('drivers', [
-      { field: 'vehiclePlate', operator: '==', value: requestData.vehiclePlate.toUpperCase() }
+      { field: 'vehiclePlate', operator: '==', value: normalizedPlate }
     ]);
     
     if (drivers.length > 0) {
       driverId = drivers[0].id;
-      driverData = drivers[0];
       driverExists = true;
     }
   }
   
-  // Create the request with complete data
+  // Dados completos com todos os IDs necessários
   const accessRequestData = {
     ...baseData,
-    // Resident Information
+    // Morador
     residentId: currentUser.uid,
-    residentName: residentDoc.name || currentUser.displayName,
+    residentName: residentDoc?.name || currentUser.displayName,
     
-    // Condominium Information
-    condoId: residentDoc.condoId || requestData.condoId,
-    condoName: condoData ? condoData.name : (requestData.condoName || 'Unknown Condominium'),
+    // Condomínio 
+    condoId: residentDoc.condoId,
+    unit: residentDoc.unit || requestData.unit,
+    block: residentDoc.block || requestData.block,
     
-    // Location Information
-    unit: requestData.unit || residentDoc.unit || '',
-    block: requestData.block || residentDoc.block || '',
-    
-    // Driver Information
-    driverId: driverId,
+    // Motorista
+    driverId: driverId, // Pode ser null se não existir
     driverName: requestData.driverName,
     driverExists: driverExists,
+    vehiclePlate: requestData.vehiclePlate?.toUpperCase(),
+    vehicleModel: requestData.vehicleModel,
     
-    // Vehicle Information
-    vehiclePlate: requestData.vehiclePlate?.toUpperCase() || '',
-    vehicleModel: requestData.vehicleModel || '',
-    
-    // Request Details
-    comment: requestData.comment || '',
+    // Metadados
     type: requestData.type || 'driver',
-    
-    // Auto-authorize if driver doesn't exist since they can't respond
-    status: driverExists ? 'pending' : 'authorized'
+    status: driverExists ? 'pending' : 'authorized' // Auto-autoriza se motorista não existir
   };
   
-  // Create the access request document
+  // Criar documento no Firestore
   const createdRequest = await FirestoreService.createDocument('access_requests', accessRequestData);
   
-  // Send notification to driver if they exist
-  if (driverExists && driverId && driverData.notificationToken) {
+  // Enviar notificação para portaria
+  if (accessRequestData.condoId) {
     try {
-      // Import notification service
-      const NotificationService = require('./notification.service').default;
-      
-      // Send notification
-      await NotificationService.sendLocalNotification(
-        'New Access Request',
-        `${accessRequestData.residentName} has requested access for you at ${accessRequestData.condoName}`,
-        {
-          requestId: createdRequest.id,
-          type: 'access_request',
-          condoName: accessRequestData.condoName,
-          unit: accessRequestData.unit,
-          block: accessRequestData.block
-        }
+      await NotificationService.sendNotificationToUser(
+        accessRequestData.condoId,
+        'Nova Solicitação de Acesso',
+        `${accessRequestData.residentName} solicitou acesso para um motorista`,
+        { requestId: createdRequest.id, type: 'new_access_request' }
       );
     } catch (notifError) {
-      console.error('Error sending notification to driver:', notifError);
-      // Continue despite notification error
+      console.error('Erro ao enviar notificação:', notifError);
+    }
+  }
+  
+  // Enviar notificação para motorista se existir
+  if (driverId) {
+    try {
+      await NotificationService.sendNotificationToUser(
+        driverId,
+        'Nova Solicitação de Acesso',
+        `${accessRequestData.residentName} solicitou sua entrada no condomínio`,
+        { requestId: createdRequest.id, type: 'driver_request' }
+      );
+    } catch (notifError) {
+      console.error('Erro ao enviar notificação para motorista:', notifError);
     }
   }
   
@@ -790,7 +775,7 @@ async _createResidentAccessRequest(requestData, baseData) {
    * @param {number} limit - Limite de resultados (opcional)
    * @returns {Promise<Array>} - Array de solicitações de acesso
    */
-  async getAccessRequests(status = null, limit = null) {
+  async getAccessRequests(status = null, limit = null) { 
     try {
       const currentUser = auth.currentUser;
       
@@ -848,7 +833,7 @@ async _createResidentAccessRequest(requestData, baseData) {
       
       // Buscar solicitações de acesso
       const requests = await FirestoreService.queryDocuments('access_requests', conditions, sortBy, limit);
-      console.log(`Encontradas ${requests.length} solicitações`);
+      console.log(`Encontradas ${requests.length} solicitações`,requests);
       
       return requests;
     } catch (error) {

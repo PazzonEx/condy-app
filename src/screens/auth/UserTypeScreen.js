@@ -98,7 +98,8 @@ const handleSelectType = (type) => {
   
   // Voltar para tela anterior
   const handleGoBack = () => {
-    navigation.goBack();
+    navigation.navigate('Login');
+
   };
   
   // Obter estilo do card baseado no tipo selecionado

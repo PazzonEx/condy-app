@@ -8,8 +8,7 @@ import LottieView from 'lottie-react-native';
 import FirestoreService from '../../services/firestore.service';
 
 const PendingApprovalScreen = () => {
-  const theme = useTheme();
-  const { userProfile, logout, reloadUserProfile } = useAuth();
+  const { userProfile, logout,setUserProfile,currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   
@@ -30,8 +29,13 @@ const PendingApprovalScreen = () => {
     try {
       setCheckingStatus(true);
       
-      // Forçar recarregamento do perfil de usuário
-      await reloadUserProfile();
+      const userDoc = await FirestoreService.getDocument('users', currentUser.uid);
+  setUserProfile({
+    ...userProfile,
+    ...userDoc,
+    profileComplete: userDoc.profileComplete,
+    status: userDoc.status,
+  });
     } catch (error) {
       console.error('Erro ao verificar status de aprovação:', error);
     } finally {
@@ -45,6 +49,10 @@ const PendingApprovalScreen = () => {
     await checkApprovalStatus();
     setLoading(false);
   };
+
+  // Atualizar o estado do contexto de autenticação
+ 
+  
   
   // Obter informações relevantes com base no tipo de usuário
   const getUserTypeInfo = () => {

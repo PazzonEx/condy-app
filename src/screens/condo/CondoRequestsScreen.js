@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, FlatList,Alert, RefreshControl, TouchableOpacity } from 'react-native';
 import { Text, Chip, ActivityIndicator, Searchbar, FAB, Button, Dialog, Portal } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -309,8 +309,19 @@ const CondoRequestsScreen = ({ navigation }) => {
             </Text>
           </View>
           <Text style={styles.dateText}>
-            {item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR') : ''}
-          </Text>
+  {item.createdAt 
+    ? (() => {
+        // Verifica se é um timestamp do Firestore
+        if (item.createdAt && item.createdAt.toDate) {
+          return item.createdAt.toDate().toLocaleDateString('pt-BR');
+        }
+        
+        // Verifica se é uma data ISO ou timestamp em milissegundos
+        const date = new Date(item.createdAt);
+        return isNaN(date.getTime()) ? '' : date.toLocaleDateString('pt-BR');
+      })()
+    : ''}
+      </Text> 
         </View>
 
         <View style={styles.requestContent}>
@@ -521,7 +532,8 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingTop: 35,
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
@@ -541,7 +553,7 @@ const styles = StyleSheet.create({
     elevation: 0,
     backgroundColor: '#F5F5F5',
     borderRadius: 8,
-    height: 40,
+    height: 60,
   },
   filtersContainer: {
     flexDirection: 'row',

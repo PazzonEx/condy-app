@@ -624,10 +624,10 @@ const CondoRegisterScreen = () => {
         placeId: condoData.placeId || '',
         
         // Informações do condomínio
-        condoInfo: {
+        
           blocks: parseInt(condoData.condoInfo.blocks) || 0,
           units: parseInt(condoData.condoInfo.units) || 0,
-        },
+        
         
         // Dados administrativos
         adminInfo: {
@@ -646,7 +646,8 @@ const CondoRegisterScreen = () => {
         
         // Documentos
         documents: uploadedDocuments,
-        
+        photoURL:uploadedDocuments.condoPhoto[0].url,
+
         // Status e metadados
         status: 'pending_verification',
         verificationStatus: 'pending',

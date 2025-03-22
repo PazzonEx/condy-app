@@ -537,17 +537,19 @@ const DriverRegisterScreen = () => {
         },
         
         // Dados do veículo
-        vehicleData: {
-          make: driverData.vehicleMake || '',
-          model: driverData.vehicleModel,
-          year: driverData.vehicleYear || '',
-          color: driverData.vehicleColor || '',
-          plate: driverData.vehiclePlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-        },
+        
+        vehicleMake: driverData.vehicleMake || '',
+        vehicleModel: driverData.vehicleModel,
+        vehicleYear: driverData.vehicleYear || '',
+        vehicleColor: driverData.vehicleColor || '',
+        vehiclePlate: driverData.vehiclePlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
+        
         
         // Documentos processados
         documents: uploadedDocuments,
-        
+        photoURL:uploadedDocuments.profilePhoto[0].url,
+        serviceType:driverData.appServices ||  [],
+
         // Serviços
         servicePreferences: {
           appServices: driverData.appServices || [],

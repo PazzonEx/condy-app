@@ -79,7 +79,9 @@ const AuthNavigator = () => {
   return (
     <Stack.Navigator
       initialRouteName={initialRoute}
+      
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: theme.colors.primary,
           elevation: 0,
@@ -97,7 +99,6 @@ const AuthNavigator = () => {
         name="Login"
         component={LoginScreen}
         options={{ 
-          title: 'Entrar',
           headerShown: false
         }}
       />
@@ -105,7 +106,7 @@ const AuthNavigator = () => {
         name="Register"
         component={RegisterScreen}
         options={{ 
-          title: 'Cadastrar',
+         
           headerShown: false
         }}
       />

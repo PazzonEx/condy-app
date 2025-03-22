@@ -5,6 +5,14 @@ import { LogBox } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getApp } from 'firebase/app';
+
+// Obter a instância do functions
+const functions = getFunctions(getApp(), 'southamerica-east1'); // Mesma região das suas functions
+
+
 // Importar navegador principal
 import AppNavigator from './src/navigation';
 
@@ -19,7 +27,7 @@ LogBox.ignoreLogs([
   'AsyncStorage has been extracted from react-native',
   'Setting a timer for a long period of time',
   'Possible Unhandled Promise Rejection'
-]);
+]); 
 
 // Definir tema personalizado
 const theme = {
@@ -39,6 +47,17 @@ export default function App() {
   const [expoPushToken, setExpoPushToken] = useState('');
   const notificationListener = useRef();
   const responseListener = useRef();
+  const [publishableKey, setPublishableKey] = useState('');
+
+  const fetchPublishableKey = async () => {
+    const key ="pk_test_51R5W7DP5RFauVjCsYvmSI7SCeDg9ZeTbMhZJiHzGyjU4tKVtKNakl7I16g4cmrw8oMtLrqXQDHsMK9hzAfjfNpx6001cMeaTF6" //await fetchKey(); // fetch key from your server here
+    setPublishableKey(key);
+  };
+
+  useEffect(() => {
+    fetchPublishableKey();
+  }, []);
+
   
 
 // No componente principal ou hook de inicialização
@@ -79,7 +98,7 @@ useEffect(() => {
     });
     
     // Limpar listeners quando o componente for desmontado
-    return () => {
+    return () => { 
       Notifications.removeNotificationSubscription(notificationListener.current);
       Notifications.removeNotificationSubscription(responseListener.current);
     };
@@ -101,8 +120,14 @@ useEffect(() => {
     <SafeAreaProvider>
       <PaperProvider theme={theme}>
         <AuthProvider>
-          <AppNavigator />
           <StatusBar style="auto" />
+          <StripeProvider
+          publishableKey={publishableKey}
+          merchantIdentifier="merchant.identifier" // required for Apple Pay
+          urlScheme="your-url-scheme" // required for 3D Secure and bank redirects
+        >
+          <AppNavigator />
+          </StripeProvider>         
         </AuthProvider>
       </PaperProvider>
     </SafeAreaProvider>

@@ -16,7 +16,7 @@ const CondoSearchService = {
       
       const {
         query = '',
-        maxResults = 10,
+        maxResults = 5,
         onlyActive = true,
         userLocation = null,
         filterType = 'all',

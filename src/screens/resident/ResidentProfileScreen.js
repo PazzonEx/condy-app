@@ -17,7 +17,7 @@ import StorageService from '../../services/storage.service';
 
 const ResidentProfileScreen = ({ navigation }) => {
   const theme = useTheme();
-  const { userProfile, logout, updateProfile } = useAuth();
+  const { userProfile, logout, updateProfile,setUserProfile } = useAuth();
   
   const [loading, setLoading] = useState(false);
   const [residentData, setResidentData] = useState(null);
@@ -69,7 +69,7 @@ const ResidentProfileScreen = ({ navigation }) => {
         } else {
           // Se o documento não existe, crie com dados iniciais
           const initialData = {
-            name: userProfile.displayName || '',
+            name: userProfile.name || '',
             email: userProfile.email || '',
             status: 'active',
             type: 'resident'
@@ -179,16 +179,24 @@ const ResidentProfileScreen = ({ navigation }) => {
         phone,
         unit,
         block,
-        condoId
+        condoId,
+        status: 'pending_verification',
       };
       
       // Atualizar dados no Firestore
       await FirestoreService.updateDocument('residents', userProfile.id, updatedData);
-      
+      await FirestoreService.updateDocument('users', userProfile.id, {status: 'pending_verification'});
       // Atualizar displayName no Auth se necessário
-      if (name !== userProfile.displayName) {
+      if (name !== userProfile.name) {
         await updateProfile({ displayName: name });
       }
+      const userDoc = await FirestoreService.getDocument('users', userProfile.id);
+      setUserProfile({
+        ...userProfile,
+        ...userDoc,
+        profileComplete: true,
+        status: 'pending_verification'
+      });
       
       // Atualizar estado local
       setResidentData(prev => ({ ...prev, ...updatedData }));
@@ -580,6 +588,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    paddingVertical:50,
   },
   avatarContainer: {
     marginRight: 20,

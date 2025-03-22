@@ -13,7 +13,6 @@ import { useAuth } from '../../hooks/useAuth';
 import AnalyticsService from '../../services/analytics.service';
 
 // Componentes personalizados
-import CustomButton from '../../components/Button'; // Se você tiver um componente Button personalizado
 
 
 const CondoReportScreen = ({ navigation }) => {

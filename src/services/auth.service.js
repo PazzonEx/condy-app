@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import FirestoreService from "./firestore.service"
+import { COLORS } from '../styles/theme';
     
 // Serviço de autenticação
 const AuthService = {
@@ -120,6 +121,8 @@ async register(email, password, displayName, userType) {
   // Enviar email de redefinição de senha
   async resetPassword(email) {
     try {
+      console.log('Enviando email de redefinição de senha para:', email);
+      console.log('auth:', auth);
       await sendPasswordResetEmail(auth, email);
       return true;
     } catch (error) {

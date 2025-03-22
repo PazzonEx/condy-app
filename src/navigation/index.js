@@ -58,16 +58,13 @@ useEffect(() => {
 
 
   useEffect(() => {
+
     if (currentUser && userProfile) {
       console.log("Estado do usuário - UID:", currentUser.uid);
       console.log("Estado do perfil - Tipo:", userProfile.type);
       console.log("Estado do perfil - Completo:", userProfile.profileComplete);
       console.log("Estado do perfil - Status:", userProfile.status);
     }
-  }, [currentUser, userProfile]);
-  
-  // Debugar estado atual
-  useEffect(() => {
     if (currentUser) {
       console.log('Usuário logado:', currentUser.uid);
       console.log('Perfil:', userProfile);
@@ -78,6 +75,7 @@ useEffect(() => {
     }
   }, [currentUser, userProfile]);
   
+ 
    
   // Função para verificar se o usuário precisa completar o cadastro
   const needsProfileCompletion = () => {
@@ -147,13 +145,13 @@ useEffect(() => {
           console.log('Redirecionando para completar perfil:', userProfile?.type);
           switch (userProfile?.type) {
             case 'resident':
-              return <Stack.Screen name="ResidentRegister" component={ResidentRegisterScreen} options={{ title: 'Cadastrar' }}/>;
+              return <Stack.Screen name="ResidentRegister" component={ResidentRegisterScreen} options={{ headerShown: false }}/>;
             case 'driver':
-              return <Stack.Screen name="DriverRegister" component={DriverRegisterScreen} options={{ title: 'Cadastrar' }} />;
+              return <Stack.Screen name="DriverRegister" component={DriverRegisterScreen} options={{ headerShown: false }} />;
             case 'condo':
-              return <Stack.Screen name="CondoRegister" component={CondoRegisterScreen} options={{ title: 'Cadastrar' }} />;
+              return <Stack.Screen name="CondoRegister" component={CondoRegisterScreen} options={{ headerShown: false }} />;
             default:
-              return <Stack.Screen name="Auth" component={AuthNavigator} options={{ title: 'Cadastrar' }} />;
+              return <Stack.Screen name="Auth" component={AuthNavigator}options={{ headerShown: false }} />;
           }
         })()
       ) : needsApproval() ? (
@@ -167,16 +165,16 @@ useEffect(() => {
           
           switch (userProfile?.type) {
             case 'resident':
-              return <Stack.Screen name="Resident" component={ResidentNavigator} />;
+              return <Stack.Screen name="Resident" component={ResidentNavigator} options={{ headerShown: false }} />;
             case 'driver':
-              return <Stack.Screen name="Driver" component={DriverNavigator} />;
+              return <Stack.Screen name="Driver" component={DriverNavigator} options={{ headerShown: false }} />;
             case 'condo':
-              return <Stack.Screen name="Condo" component={CondoNavigator} />;
+              return <Stack.Screen name="Condo" component={CondoNavigator} options={{ headerShown: false }}/>;
             case 'admin':
-              return <Stack.Screen name="Admin" component={AdminNavigator} />;
+              return <Stack.Screen name="Admin" component={AdminNavigator} options={{ headerShown: false }} />;
             default:
               console.error('Tipo de usuário indefinido ou inválido:', userProfile?.type);
-              return <Stack.Screen name="Auth" component={AuthNavigator} />;
+              return <Stack.Screen name="Auth" component={AuthNavigator} options={{ headerShown: false }} />;
           }
         })()
       )}

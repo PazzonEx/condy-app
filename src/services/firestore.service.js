@@ -70,9 +70,7 @@ async createDocument(collectionName, data) {
     // Criar documento com ID específico
     async createDocumentWithId(collectionName, docId, data) {
       try {
-        if (!docId) {
-          throw new Error('ID do documento não fornecido');
-        }
+        
         
         // Sanitizar dados antes de enviar para o Firestore
         const sanitizedData = {};

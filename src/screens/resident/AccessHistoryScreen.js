@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 16,
+    paddingVertical: 35,
   },
   historyCard: {
     marginBottom: 12,

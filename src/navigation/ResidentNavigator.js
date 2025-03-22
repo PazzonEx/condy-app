@@ -33,10 +33,10 @@ const HomeStack = () => {
         },
       }}
     >
-      <Stack.Screen name="ResidentHome" component={ResidentHomeScreen} options={{ title: 'Início' }} />
-      <Stack.Screen name="ResidentNotifications" component={ResidentNotificationsScreen} options={{ title: 'Notificações' }} />
-      <Stack.Screen name="NewAccessRequest" component={NewAccessRequestScreen} options={{ title: 'Nova Solicitação' }} />
-      <Stack.Screen name="AccessDetails" component={AccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+      <Stack.Screen name="ResidentHome" component={ResidentHomeScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ResidentNotifications" component={ResidentNotificationsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NewAccessRequest" component={NewAccessRequestScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AccessDetails" component={AccessDetailsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
@@ -56,8 +56,8 @@ const HistoryStack = () => {
         },
       }}
     >
-      <Stack.Screen name="AccessHistory" component={AccessHistoryScreen} options={{ title: 'Histórico' }} />
-      <Stack.Screen name="AccessDetails" component={AccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
+      <Stack.Screen name="AccessHistory" component={AccessHistoryScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AccessDetails" component={AccessDetailsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
@@ -77,8 +77,8 @@ const ProfileStack = () => {
         },
       }}
     >
-      <Stack.Screen name="Profile" component={ResidentProfileScreen} options={{ title: 'Meu Perfil' }} />
-      <Stack.Screen name="Settings" component={ResidentSettingsScreen} options={{ title: 'Configurações' }} />
+      <Stack.Screen name="Profile" component={ResidentProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Settings" component={ResidentSettingsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };

@@ -12,7 +12,7 @@ import CondoResidentsScreen from '../screens/condo/CondoResidentsScreen';
 import CondoSettingsScreen from '../screens/condo/CondoSettingsScreen';
 import CondoQRScannerScreen from '../screens/condo/CondoQRScannerScreen';
 import CondoAccessDetailsScreen from '../screens/condo/CondoAccessDetailsScreen';
-import CondoSubscriptionScreen from '../screens/condo/CondoSubscriptionScreen';
+import SubscriptionPlansScreen from '../screens/shared/SubscriptionPlansScreen';
 import CondoDashboardScreen from '../screens/condo/CondoDashboardScreen';
 import CondoReportScreen from '../screens/condo/CondoReportScreen';
 import CondoProfileScreen from '../screens/condo/CondoProfileScreen';
@@ -28,13 +28,7 @@ const HomeStack = () => {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerShown: false
       }}
     >
       <Stack.Screen name="CondoHome" component={CondoHomeScreen} options={{ title: 'Portaria' }} />
@@ -42,7 +36,7 @@ const HomeStack = () => {
       <Stack.Screen name="CondoAccessDetails" component={CondoAccessDetailsScreen} options={{ title: 'Detalhes do Acesso' }} />
       <Stack.Screen name="CondoDashboard" component={CondoDashboardScreen} options={{ title: 'Dashboard' }} />
       <Stack.Screen name="CondoReport" component={CondoReportScreen} options={{ title: 'Relatório Detalhado' }} />
-      <Stack.Screen name="CondoSubscription" component={CondoSubscriptionScreen} options={{ title: 'Planos e Assinaturas' }} />
+      <Stack.Screen name="CondoSubscription" component={SubscriptionPlansScreen} options={{ title: 'Planos e Assinaturas' }} />
       <Stack.Screen name="CondoProfile" component={CondoProfileScreen} options={{ title: 'Perfil do Condomínio' }} />
       <Stack.Screen name="CondoSubscriptionPassword" component={CondoSubscriptionPasswordScreen} options={{ title: 'Senha de Administrador' }} />
     </Stack.Navigator>
@@ -56,13 +50,8 @@ const RequestsStack = () => {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerShown: false,
+       
       }}
     >
       <Stack.Screen name="CondoRequests" component={CondoRequestsScreen} options={{ title: 'Solicitações' }} />
@@ -79,13 +68,7 @@ const ResidentsStack = () => {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerShown: false,
       }}
     >
       <Stack.Screen name="CondoResidents" component={CondoResidentsScreen} options={{ title: 'Moradores' }} />
@@ -100,17 +83,11 @@ const SettingsStack = () => {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.primary,
-        },
-        headerTintColor: 'white',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        headerShown: false
       }}
     >
       <Stack.Screen name="CondoSettings" component={CondoSettingsScreen} options={{ title: 'Configurações' }} />
-      <Stack.Screen name="CondoSubscription" component={CondoSubscriptionScreen} options={{ title: 'Planos e Assinaturas' }} />
+      <Stack.Screen name="CondoSubscription" component={SubscriptionPlansScreen} options={{ title: 'Planos e Assinaturas' }} />
       <Stack.Screen name="CondoProfile" component={CondoProfileScreen} options={{ title: 'Perfil do Condomínio' }} />
       <Stack.Screen name="CondoSubscriptionPassword" component={CondoSubscriptionPasswordScreen} options={{ title: 'Senha de Administrador' }} />
     </Stack.Navigator>

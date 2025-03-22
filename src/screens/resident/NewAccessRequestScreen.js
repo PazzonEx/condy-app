@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { Text, useTheme, Checkbox, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
+import * as Network from 'expo-network';
 // Hooks personalizados
 import { useAuth } from '../../hooks/useAuth';
+import { serverTimestamp } from 'firebase/firestore';
 
 // Componentes personalizados
 import Input from '../../components/Input';
@@ -23,7 +24,7 @@ import { formatVehiclePlate } from '../../utils/format';
 
 const NewAccessRequestScreen = ({ navigation }) => {
   const theme = useTheme();
-  const { userProfile } = useAuth();
+  const { userProfile ,currentUser} = useAuth();
   
   // Estados para formulário
   const [driverName, setDriverName] = useState('');
@@ -114,8 +115,8 @@ const NewAccessRequestScreen = ({ navigation }) => {
   const handleSelectDriver = (driver) => {
     setSelectedDriver(driver);
     setDriverName(driver.name);
-    setVehiclePlate(driver.vehiclePlate || '');
-    setVehicleModel(driver.vehicleModel || '');
+    setVehiclePlate(driver,vehicleData.plate|| '');
+    setVehicleModel(driver.vehicleData.model || '');
     setSearchDriver('');
   };
 
@@ -130,8 +131,8 @@ const NewAccessRequestScreen = ({ navigation }) => {
   // Selecionar motorista da pesquisa
   const handleSelectSearchedDriver = (driver) => {
     setSelectedDriver(driver);
-    setDriverName(driver.name || driver.displayName);
-    setVehiclePlate(driver.vehiclePlate || '');
+    setDriverName(driver.name || "");
+    setVehiclePlate(driver.vehiclePlate|| '');
     setVehicleModel(driver.vehicleModel || '');
     setSearchDriver('');
     setShowSearchSection(false);
@@ -177,64 +178,103 @@ const NewAccessRequestScreen = ({ navigation }) => {
   };
 
   // Manipulador para envio do formulário
-  // In NewAccessRequestScreen.js
-const handleSubmit = async () => {
-  if (!validateForm()) {
-    return;
-  }
+// Em src/screens/resident/NewAccessRequestScreen.js - Função handleSubmit melhorada
 
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    Alert.alert('Error', 'Usuario não autenticado');
+const handleSubmit = async () => {
+  console.log('handleSubmit chamado');
+
+  if (!validateForm()) {
     return;
   }
 
   setLoading(true);
 
   try {
-    // Fetch resident information to ensure we have the correct condominium data
+    // Verificar se há conexão com a Internet
+    const netInfo = await Network.getNetworkStateAsync();
+    if (!netInfo.isConnected) {
+      throw new Error('Sem conexão com a Internet. Verifique sua conexão e tente novamente.');
+    }
+
+    // Buscar perfil do morador para garantir que temos os dados corretos
     const residentProfile = await FirestoreService.getDocument('residents', currentUser.uid);
     
     if (!residentProfile || !residentProfile.condoId) {
-      Alert.alert('Error', 'Your profile is not properly linked to a condominium. Please update your profile first.');
+      Alert.alert(
+        'Perfil Incompleto', 
+        'Seu perfil não está vinculado a um condomínio. Atualize seu perfil primeiro.'
+      );
       setLoading(false);
       return;
     }
     
-    // Fetch condominium information
-    const condoData = await FirestoreService.getDocument('condos', residentProfile.condoId);
+    // Normalizar placa do veículo
+    const normalizedPlate = vehiclePlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
     
-    // Prepare request data with complete information
+    // Verificar se motorista já existe
+    let existingDriver = null;
+    if (normalizedPlate) {
+      const drivers = await FirestoreService.queryDocuments('drivers', [
+        { field: 'vehiclePlate', operator: '==', value: normalizedPlate }
+      ]);
+      
+      if (drivers.length > 0) {
+        existingDriver = drivers[0];
+      }
+    }
+    
+    // Preparar request data com todas as informações necessárias
     const requestData = {
       driverName,
-      vehiclePlate: vehiclePlate.toUpperCase(),
+      vehiclePlate: normalizedPlate,
       vehicleModel,
       comment,
       
-      // Important: Include condominium and location data
+      // Informações do condomínio e localização
       condoId: residentProfile.condoId,
-      condoName: condoData ? condoData.name : 'Unknown Condominium',
-      unit: residentProfile.unit || '',
-      block: residentProfile.block || '',
+      unit: residentProfile.unit,
+      block: residentProfile.block,
       
-      // Type information
-      type: 'driver',
+      // Se encontramos um motorista existente
+      driverId: existingDriver?.id,
       
-      // Metadata
-      timestamp: new Date().getTime()
+      // Tipo de solicitação
+      type: 'driver'
     };
     
-    // Create access request
+    // Se o usuário marcou para salvar o motorista e não temos um existente
+    if (saveDriver && !existingDriver) {
+      try {
+        // Salvar motorista para uso futuro
+        await FirestoreService.createDocument('saved_drivers', {
+          residentId: currentUser.uid,
+          name: driverName,
+          vehiclePlate: normalizedPlate,
+          vehicleModel,
+          type: 'saved_driver',
+          createdAt: serverTimestamp()
+        });
+      } catch (saveError) {
+        console.error('Erro ao salvar motorista:', saveError);
+        // Continuar mesmo com erro
+      }
+    }
+    
+    // Criar solicitação de acesso
     const result = await AccessService.createAccessRequest(requestData, 'resident');
     
+    // Mostrar feedback de sucesso
     Alert.alert(
-      'Success',
-      'Access request created successfully',
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
+      'Solicitação Criada',
+      'Sua solicitação de acesso foi enviada com sucesso para a portaria.',
+      [{ 
+        text: 'OK', 
+        onPress: () => navigation.goBack() 
+      }]
     );
   } catch (error) {
-    console.error('Error creating request:', error);
-    Alert.alert('Error', 'Could not create the access request');
+    console.error('Erro ao criar solicitação:', error);
+    Alert.alert('Erro', `Não foi possível criar a solicitação: ${error.message}`);
   } finally {
     setLoading(false);
   }

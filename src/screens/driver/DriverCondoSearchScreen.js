@@ -11,6 +11,7 @@ import {
 import { Text, useTheme, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import LottieView from 'lottie-react-native';
 
 // Hooks
 import { useAuth } from '../../hooks/useAuth';
@@ -123,7 +124,7 @@ const DriverCondoSearchScreen = ({ navigation }) => {
         driverName: userProfile.name || '',
         condoName: selectedCondo.name || '',
         status: 'pending',
-        createdAt: new Date()
+        createdAt: new Date() 
       };
       
       // Enviar solicitação
@@ -158,18 +159,14 @@ const DriverCondoSearchScreen = ({ navigation }) => {
       style={styles.container}
     >
       <View style={styles.mainContainer}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Solicitar Acesso</Text>
-          <Text style={styles.subtitle}>
-            Busque o condomínio e informe a unidade para solicitar entrada
-          </Text>
-        </View>
-        
+       
+      <ScrollView style={styles.formScrollView}>
         {/* Componente de busca de condomínios */}
-        <Card style={styles.searchCard}>
-          <Text style={styles.sectionTitle}>Buscar Condomínio</Text>
+        {!selectedCondo &&(
+          <><Card style={styles.searchCard}>
           
-          <GooglePlacesCondoSearch
+          
+           <GooglePlacesCondoSearch
             onSelectCondo={handleSelectCondo}
             style={styles.searchInput}
             initialLocation={initialLocation}
@@ -179,10 +176,20 @@ const DriverCondoSearchScreen = ({ navigation }) => {
             <Text style={styles.errorText}>{formErrors.condo}</Text>
           )}
         </Card>
+        <View style={styles.emptyAnimationCenter} >
+         <LottieView
+         source={require('../../assets/animations/empty-state.json')}
+         autoPlay
+         loop
+         style={styles.emptyAnimation}
+            />
+            </View>
+            </>
+      )}
         
         {/* Formulário de solicitação - exibido apenas após selecionar condomínio */}
         {selectedCondo && (
-          <ScrollView style={styles.formScrollView}>
+          
             <Card style={styles.formCard}>
               <View style={styles.selectedCondoHeader}>
                 <MaterialCommunityIcons 
@@ -274,8 +281,9 @@ const DriverCondoSearchScreen = ({ navigation }) => {
                 </Button>
               </View>
             </Card>
-          </ScrollView>
+          
         )}
+        
         
         {loading && (
           <View style={styles.loadingOverlay}>
@@ -283,6 +291,7 @@ const DriverCondoSearchScreen = ({ navigation }) => {
             <Text style={styles.loadingText}>Enviando solicitação...</Text>
           </View>
         )}
+        </ScrollView>
       </View>
     </KeyboardAvoidingView>
   );
@@ -291,14 +300,16 @@ const DriverCondoSearchScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#ffffff',
   },
   mainContainer: {
     flex: 1,
     padding: 16,
+    paddingVertical:35,
   },
   header: {
     marginBottom: 16,
+    
   },
   title: {
     fontSize: 24,
@@ -325,7 +336,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 12,
   },
+  emptyAnimation: {
+    width: 100,
+    height: 150,
+    marginBottom: 16,
+    
+    
+  },
+  emptyAnimationCenter:{
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchInput: {
+    width: '100%',
+    
     marginBottom: 0,
   },
   selectedCondoHeader: {

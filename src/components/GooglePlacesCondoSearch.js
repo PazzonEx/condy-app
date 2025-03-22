@@ -149,7 +149,7 @@ const GooglePlacesCondoSearch = ({ onSelectCondo, initialValue = '', style, insi
       // Parâmetros de busca avançada
       const searchParams = {
         query: query.trim(),
-        maxResults: 3,
+        maxResults: 5,
         onlyActive: true,
         userLocation,
         filterType: activeFilter,

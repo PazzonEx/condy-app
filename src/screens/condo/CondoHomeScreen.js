@@ -50,9 +50,9 @@ const CondoHomeScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('pending');
+  const [filter, setFilter] = useState('all ');
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickStatsVisible, setQuickStatsVisible] = useState(true);
+  const [quickStatsVisible, setQuickStatsVisible] = useState(false);
   const [quickStats, setQuickStats] = useState({
     pending: 0,
     authorized: 0,
@@ -111,7 +111,7 @@ const CondoHomeScreen = ({ navigation }) => {
       } else if (filter === 'completed') {
         statusFilter = ['completed', 'entered', 'denied', 'denied_by_resident', 'canceled'];
       }
-      
+       
       // Buscar solicitações
       const accessRequests = await AccessService.getAccessRequests(statusFilter);
       
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingTop: 35,
     backgroundColor: '#FFFFFF',
   },
   headerContent: {
@@ -673,9 +673,11 @@ const styles = StyleSheet.create({
   },
   searchBar: {
     elevation: 0,
+    textAlign:"center",
+    textAlignVertical:"center",
     backgroundColor: '#F5F5F5',
     borderRadius: 8,
-    height: 40,
+    height: 60,
   },
   filtersContainer: {
     flexDirection: 'row',

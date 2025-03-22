@@ -56,7 +56,7 @@ const CondoProfileScreen = ({ navigation }) => {
         } else {
           // Se o documento não existe, crie com dados iniciais
           const initialData = {
-            name: userProfile.displayName || '',
+            name: userProfile.name || '',
             email: userProfile.email || '',
             status: 'active',
             type: 'condo'
@@ -528,6 +528,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingTop:35,
     padding: 20,
     backgroundColor: 'white',
     borderBottomWidth: 1,
